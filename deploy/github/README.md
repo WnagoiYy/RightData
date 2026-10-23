@@ -7,21 +7,23 @@
 | Windows x64 | windows-latest | NSIS `.exe` |
 | macOS Apple Silicon | macos-15 | `.dmg` |
 | macOS Intel | macos-15-intel | `.dmg` |
+| 后端 Windows x64 | windows-latest | 签名 `.zip`，含离线 DuckDB 扩展 |
 
 包均不包含 WebView 运行时。Windows 使用已安装的系统 WebView2，macOS 使用系统 WebKit；macOS 最低声明版本为 12.0。应用与内嵌网络服务均按目标原生架构构建。
 
 ## 自动发布
 
 1. 同步 `client/package.json`、npm lock、两个 Cargo 清单与 lock、`tauri.conf.json` 的版本。
-2. 推送 `v<版本>` 标签，或手动运行 Desktop release。
+2. 推送 `v<版本>` 标签，或手动运行 RightData release。
 3. 每个平台执行网络服务和客户端 Rust 单元测试、前端构建；Mac 还运行真实 Unix socket 服务进程测试。
-4. 构建最终安装包、生成更新签名和清单，三平台全部成功后才一次发布 Release。已有同名版本不会被覆盖。
+4. 后端执行 Go vet、构建及完整集成测试，并打包所需依赖。
+5. 构建最终包、生成更新签名和清单，三个客户端和后端全部成功后才一次发布 Release。已有同名版本不会被覆盖。
 
 `RIGHTDATA_UPDATE_SIGNING_KEY` 是 Actions Secret，只用于最终包签名；`client/update-public-key.pub` 是随客户端编译的验证公钥。私钥不得进入 Git 历史。自建公网更新源使用可选仓库变量 `RIGHTDATA_PUBLIC_UPDATE_URL`，不设置时会跳过该来源。更新策略见 [客户端更新](../../client/updates.md)。
 
 `sign-release.mjs` 使用标准 Ed25519/BLAKE2b 生成 Minisign 预哈希签名；测试夹具由原生 `minisign-verify` 验证，避免仅由签名脚本自身验证。
 
-发布后可手动运行 Verify published release，或在本机执行 `node deploy/github/verify-release.mjs`。它通过客户端相同的 latest URL 获取三份清单，重新下载三个包，与 GitHub 资产大小/摘要对照，并独立校验 Ed25519 包签名、trusted comment 签名和 `.minisig` 附件。只使用公开公钥，不读取发布私钥。本机需要 curl 访问代理时可设置 `RIGHTDATA_VERIFY_CURL=1`。
+发布成功后自动运行 Verify published release，也可手动运行或在本机执行 `node deploy/github/verify-release.mjs`。它通过 latest URL 获取四份清单，重新下载三个客户端包和后端包，与 GitHub 资产大小/摘要对照，并独立校验 Ed25519 包签名、trusted comment 签名和 `.minisig` 附件。只使用公开公钥，不读取发布私钥。本机需要 curl 访问代理时可设置 `RIGHTDATA_VERIFY_CURL=1`。dacp 无 GitHub 网络，使用本机下载并通过 [SSH 部署脚本](../server/README.md) 传输；GitHub 不直接连接私网主机。
 
 ## 本机构建
 
