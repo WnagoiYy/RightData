@@ -1,0 +1,49 @@
+name: Publish verified build
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: RightData release run with all five build jobs successful
+        required: true
+        type: string
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_RUN_ID: ${{ inputs.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate completed build provenance
+        run: |
+          node --input-type=module <<'JS'
+          import {appendFileSync} from 'node:fs';
+          const id = process.env.BUILD_RUN_ID;
+          if (!/^[0-9]+$/.test(id)) throw new Error('Invalid build run ID');
+          const root = `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}`;
+          async function get(path) {
+            const r = await fetch(root + path, {headers:{Authorization:`Bearer ${process.env.GH_TOKEN}`},redirect:'error'});
+            if (!r.ok) throw new Error(`GitHub HTTP ${r.status}`);
+            return r.json();
+          }
+          const run = await get(`/actions/runs/${id}`);
+          if (run.path !== '.github/workflows/release.yml' || run.status !== 'completed' || run.event === 'pull_request' || run.head_repository.full_name !== process.env.GITHUB_REPOSITORY) throw new Error('Unexpected build provenance');
+          const {jobs} = await get(`/actions/runs/${id}/jobs?per_page=100`);
+          const builds = jobs.filter(j => ['server','server-linux'].includes(j.name) || j.name.startsWith('build ('));
+          if (builds.length !== 5 || builds.some(j => j.conclusion !== 'success')) throw new Error('All five build jobs must succeed');
+          if (!/^[0-9a-f]{40}$/.test(run.head_sha)) throw new Error('Invalid build commit');
+          appendFileSync(process.env.GITHUB_ENV, `RIGHTDATA_BUILD_SHA=${run.head_sha}\n`);
+          console.log(`Reusing verified build ${id} at ${run.head_sha}`);
+          JS
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: test/artifacts/release
+          merge-multiple: true
+      - name: Publish existing packages at the existing source tag
+        run: node deploy/github/publish-release.mjs

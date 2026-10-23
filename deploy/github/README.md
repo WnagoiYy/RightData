@@ -15,10 +15,12 @@
 ## 自动发布
 
 1. 同步 `client/package.json`、npm lock、两个 Cargo 清单与 lock、`tauri.conf.json` 的版本。
-2. 推送 `v<版本>` 标签，或手动运行 RightData release。
+2. 先在发布提交创建并推送 `v<版本>` 标签；需要手动运行时也使用该标签。发布脚本核对标签指向的提交与构建提交一致。
 3. 每个平台执行网络服务和客户端 Rust 单元测试、前端构建；Mac 还运行真实 Unix socket 服务进程测试。
 4. 后端执行 Go vet、构建及完整集成测试，并打包所需依赖。
 5. 构建最终包、生成更新签名和清单，三个客户端和后端全部成功后才一次发布 Release。已有同名版本不会被覆盖。
+
+若五个构建任务均成功、只有发布步骤失败，可运行 `Publish verified build`，填写原构建 run ID。该流程核对同仓库发布工作流、五个构建结果和版本标签后复用原包，不重新编译，也不覆盖已有 Release。
 
 `RIGHTDATA_UPDATE_SIGNING_KEY` 是 Actions Secret，只用于最终包签名；`client/update-public-key.pub` 是随客户端编译的验证公钥。私钥不得进入 Git 历史。自建公网更新源使用可选仓库变量 `RIGHTDATA_PUBLIC_UPDATE_URL`，不设置时会跳过该来源。更新策略见 [客户端更新](../../client/updates.md)。
 
