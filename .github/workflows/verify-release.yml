@@ -7,7 +7,7 @@ on:
         type: boolean
         default: false
   workflow_run:
-    workflows: ['RightData release']
+    workflows: ['RightData release', 'Publish verified build']
     types: [completed]
 permissions:
   contents: read
