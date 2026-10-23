@@ -113,6 +113,8 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass `
 
 安装器的 NSIS 原生 `System.dll` 与 .NET 程序集同名，因此会话查询使用已加载 .NET 程序集的绝对路径编译，避免临时目录中的 DLL 名称冲突。安装脚本失败会在安装目录保留 `rightdata-install-error.log`；静默模式会返回非零退出码。
 
+从 PowerShell 7 启动安装器时，Windows PowerShell 5.1 子进程可能继承不兼容的模块搜索路径。安装脚本会在该子进程内限定到 Windows 自带模块，避免 `Set-Acl` 等系统命令加载失败。本机已验证中文目录下两次覆盖安装、服务重启及设备身份/连接配置保留。可在管理员终端对现有安装运行 `test/client/installer-local.ps1 -Package 安装包 -InstallDir 现有安装目录`；该测试会覆盖安装并重启客户端，不执行卸载。
+
 尚未验证真实 Windows 10/11 桌面上的图形安装流程、企业软件分发、安装失败回滚及系统重启后的服务状态。客户端安装包不负责安装 WebView2 Runtime。
 
 静态安装约定测试：
