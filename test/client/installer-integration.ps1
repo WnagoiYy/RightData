@@ -23,7 +23,11 @@ function Invoke-Installer([string]$Executable, [string]$Arguments) {
         }
         throw 'Installer timed out; no interactive dialogs are accepted in CI'
     }
-    if ($process.ExitCode -ne 0) { throw "Installer exited $($process.ExitCode)" }
+    if ($process.ExitCode -ne 0) {
+        Get-Content -LiteralPath "$installDirectory/rightdata-install-error.log" -ErrorAction SilentlyContinue | Write-Output
+        Get-ChildItem -LiteralPath $installDirectory -ErrorAction SilentlyContinue | Select-Object Name,Length | Format-Table | Out-String | Write-Output
+        throw "Installer exited $($process.ExitCode)"
+    }
 }
 function Assert-Running {
     $service = Get-Service RightDataNetwork -ErrorAction Stop

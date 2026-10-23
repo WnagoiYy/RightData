@@ -10,6 +10,9 @@
   Pop $1
   ${If} $0 != 0
     DetailPrint "RightData network service ${ACTION} failed: $1"
+    FileOpen $2 "$INSTDIR\rightdata-install-error.log" w
+    FileWrite $2 "RightData network service ${ACTION} failed ($0): $1$\r$\n"
+    FileClose $2
     MessageBox MB_ICONSTOP|MB_OK "网络服务安装步骤失败，安装程序未继续。$\r$\n$1" /SD IDOK
     SetErrorLevel 1
     Abort

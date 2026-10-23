@@ -10,6 +10,10 @@ on:
         description: Test the current service lifecycle script against the signed service binary
         type: boolean
         default: false
+      test_installer_hooks:
+        description: Rebundle verified binaries with current hooks for installation diagnostics
+        type: boolean
+        default: false
       test_windows_installer:
         description: Run the real Windows installation lifecycle on an ephemeral runner
         type: boolean
@@ -21,7 +25,7 @@ permissions:
   contents: read
 jobs:
   windows-install:
-    if: github.event_name == 'workflow_dispatch' && (inputs.test_windows_installer || inputs.test_service_script)
+    if: github.event_name == 'workflow_dispatch' && (inputs.test_windows_installer || inputs.test_service_script || inputs.test_installer_hooks)
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
@@ -46,6 +50,12 @@ jobs:
         run: |
           $version = (Get-Content test/results/release-verification.json -Raw | ConvertFrom-Json).version
           ./test/client/installer-integration.ps1 -Package "test/artifacts/release-$version/RightData-$version-windows-x64.exe"
+      - name: Diagnose current installer hooks with verified binaries
+        if: inputs.test_installer_hooks
+        shell: powershell
+        run: |
+          $version = (Get-Content test/results/release-verification.json -Raw | ConvertFrom-Json).version
+          ./test/client/installer-hooks-integration.ps1 -Package "test/artifacts/release-$version/RightData-$version-windows-x64.exe"
   verify:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
