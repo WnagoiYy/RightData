@@ -11,6 +11,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# NSIS inherits its parent's environment. When launched from PowerShell 7,
+# Windows PowerShell 5.1 must not autoload the parent's incompatible modules.
+# All modules used by this lifecycle belong to Windows itself.
+if ($PSVersionTable.PSEdition -eq 'Desktop') {
+    $env:PSModulePath = Join-Path $PSHOME 'Modules'
+}
+
 $serviceName = 'RightDataNetwork'
 $displayName = 'RightData Network Service'
 $firewallRuleName = 'RightDataNetwork-Program-v1'

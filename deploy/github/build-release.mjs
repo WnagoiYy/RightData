@@ -13,12 +13,19 @@ function run(command, args, cwd = root) {
   const result = spawnSync(command, args, { cwd, env, stdio: 'inherit', shell: false, windowsHide: true });
   if (result.status !== 0) throw new Error(`${command} exited ${result.status}: ${result.error || ''}`);
 }
-run('cargo', ['build', '--locked', '--release', '--manifest-path', 'client/network-service/Cargo.toml', '--target', target]);
+const serviceTarget = join(root, 'client/network-service/target');
+run('cargo', ['build', '--locked', '--release', '--manifest-path', 'client/network-service/Cargo.toml', '--target-dir', serviceTarget, '--target', target]);
+const serviceBinary = join(serviceTarget, target, 'release', `rightdata-network-service${platform === 'windows' ? '.exe' : ''}`);
+if (platform === 'windows') {
+  const directory = join(root, `client/target/${target}/release`);
+  mkdirSync(directory, { recursive: true });
+  copyFileSync(serviceBinary, join(directory, 'rightdata-network-service.exe'));
+}
 if (platform === 'macos') {
   const directory = join(root, 'client/target/macos-resources');
   mkdirSync(directory, { recursive: true });
   const helper = join(directory, 'rightdata-network-service');
-  copyFileSync(join(root, `client/target/${target}/release/rightdata-network-service`), helper);
+  copyFileSync(serviceBinary, helper);
   run('/usr/bin/codesign', ['--force', '--sign', '-', helper]);
 }
 run(process.execPath, ['scripts/tauri.mjs', 'build', '--ci', '--target', target, '--bundles', platform === 'windows' ? 'nsis' : 'app,dmg'], join(root, 'client'));

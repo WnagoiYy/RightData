@@ -1,12 +1,22 @@
 name: RightData release
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a new version after all checks (leave false for build/cache testing)
+        type: boolean
+        default: false
+      windows_only:
+        description: Build and test only the Windows client (never publishes)
+        type: boolean
+        default: false
   push:
     tags: ['v*']
 permissions:
   contents: read
 jobs:
   server-linux:
+    if: ${{ !inputs.windows_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -47,6 +57,7 @@ jobs:
           path: test/artifacts/release/*
           if-no-files-found: error
   server:
+    if: ${{ !inputs.windows_only }}
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
@@ -83,16 +94,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            name: windows-x64
-          - os: macos-15
-            target: aarch64-apple-darwin
-            name: macos-arm64
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-            name: macos-x64
+        include: ${{ fromJSON(inputs.windows_only && '[{"os":"windows-latest","target":"x86_64-pc-windows-msvc","name":"windows-x64"}]' || '[{"os":"windows-latest","target":"x86_64-pc-windows-msvc","name":"windows-x64"},{"os":"macos-15","target":"aarch64-apple-darwin","name":"macos-arm64"},{"os":"macos-15-intel","target":"x86_64-apple-darwin","name":"macos-x64"}]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
@@ -109,20 +111,23 @@ jobs:
           cache-dependency-path: client/package-lock.json
       - name: Rust target
         run: |
-          rustup update stable --no-self-update
-          rustup default stable
+          rustup toolchain install 1.99.1 --profile minimal --no-self-update
+          rustup default 1.99.1
           rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
+          # Never prune two independent dependency graphs in the same target.
+          prefix-key: v1-separated-targets
           workspaces: |
-            client/network-service -> ../target
+            client/network-service -> target
             client/src-tauri -> ../target
           key: ${{ matrix.target }}
+          cache-on-failure: true
       - name: Install frontend dependencies
         working-directory: client
         run: npm ci
       - name: Network service unit tests
-        run: cargo test --locked --manifest-path client/network-service/Cargo.toml
+        run: cargo test --locked --manifest-path client/network-service/Cargo.toml --target-dir client/network-service/target
       - name: Windows installer session regression tests
         if: runner.os == 'Windows'
         shell: powershell
@@ -156,7 +161,9 @@ jobs:
         run: node deploy/github/build-release.mjs ${{ matrix.target }}
       - name: Real Windows installer lifecycle
         if: runner.os == 'Windows'
-        shell: powershell
+        # Exercise the inherited PowerShell 7 environment as well as the
+        # installer's actual Windows PowerShell 5.1 child process.
+        shell: pwsh
         run: |
           $packages = @(Get-ChildItem test/artifacts/release/RightData-*-windows-x64.exe)
           if ($packages.Count -ne 1) { throw 'Expected exactly one installer' }
@@ -167,6 +174,7 @@ jobs:
           path: test/artifacts/release/*
           if-no-files-found: error
   publish:
+    if: ${{ !inputs.windows_only && (startsWith(github.ref, 'refs/tags/v') || inputs.publish) }}
     needs: [build, server, server-linux]
     runs-on: ubuntu-latest
     permissions:

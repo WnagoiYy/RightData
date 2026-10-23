@@ -11,7 +11,7 @@ import time
 root = Path(__file__).resolve().parents[2]
 data = root / 'test/runtime/unix-service'
 data.mkdir(parents=True, exist_ok=True)
-binary = root / 'client/target/debug/rightdata-network-service'
+binary = root / 'client/network-service/target/debug/rightdata-network-service'
 sock = data / 'network.sock'
 
 def start():

@@ -15,12 +15,18 @@
 ## 自动发布
 
 1. 同步 `client/package.json`、npm lock、两个 Cargo 清单与 lock、`tauri.conf.json` 的版本。
-2. 先在发布提交创建并推送 `v<版本>` 标签；需要手动运行时也使用该标签。发布脚本核对标签指向的提交与构建提交一致。
+2. 先在发布提交创建并推送 `v<版本>` 标签；需要手动发布时也使用该标签，并勾选 `publish`。发布脚本核对标签指向的提交与构建提交一致。
 3. 每个平台执行网络服务和客户端 Rust 单元测试、前端构建；Mac 还运行真实 Unix socket 服务进程测试。
 4. 后端执行 Go vet、构建及完整集成测试，并打包所需依赖。
 5. 构建最终包、生成更新签名和清单，三个客户端和后端全部成功后才一次发布 Release。已有同名版本不会被覆盖。
 
 若五个构建任务均成功、只有发布步骤失败，可运行 `Publish verified build`，填写原构建 run ID。该流程核对同仓库发布工作流、五个构建结果和版本标签后复用原包，不重新编译，也不覆盖已有 Release。
+
+## 构建测试与缓存
+
+手动运行 `RightData release` 时默认只构建测试，不发布 Release。勾选 `windows_only` 只验证 Windows 客户端，包括真实 NSIS 安装生命周期，适合安装问题回归和缓存耗时对比；此模式不能发布。需要所有平台构建时保持未勾选。
+
+CI 固定使用已验证的 Rust 1.99.1。网络服务缓存放在 `client/network-service/target/`，客户端缓存放在 `client/target/`；两个独立依赖图不能共用同一个被 rust-cache 分别清理的目录。构建失败时仍保存已编译的依赖。首次使用新缓存键需要完整构建，后续同工具链和依赖的构建复用缓存；本项目代码变化后的优化与链接仍会执行。
 
 `RIGHTDATA_UPDATE_SIGNING_KEY` 是 Actions Secret，只用于最终包签名；`client/update-public-key.pub` 是随客户端编译的验证公钥。私钥不得进入 Git 历史。自建公网更新源使用可选仓库变量 `RIGHTDATA_PUBLIC_UPDATE_URL`，不设置时会跳过该来源。更新策略见 [客户端更新](../../client/updates.md)。
 
@@ -38,7 +44,7 @@ node deploy/github/build-release.mjs aarch64-apple-darwin
 node deploy/github/build-release.mjs x86_64-apple-darwin
 ```
 
-每次只运行与本机构架对应的一行。产物位于 `test/artifacts/release/`，编译缓存位于 `client/target/`。Windows 单独打未发布安装包仍可使用 `deploy/windows/package-windows.ps1`。
+每次只运行与本机构架对应的一行。产物位于 `test/artifacts/release/`，编译缓存位于 `client/target/` 和 `client/network-service/target/`。Windows 单独打未发布安装包仍可使用 `deploy/windows/package-windows.ps1`。
 
 ## macOS 安装与服务
 
