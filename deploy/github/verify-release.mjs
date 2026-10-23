@@ -11,7 +11,9 @@ if (process.env.RIGHTDATA_VERIFY_CURL === '1') {
   if (result.status !== 0) throw new Error('Unable to read public release metadata');
   release = JSON.parse(result.stdout);
 } else {
-  const response = await fetch(apiUrl, { redirect: 'error', signal: AbortSignal.timeout(30000) });
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  const response = await fetch(apiUrl, { redirect: 'error', signal: AbortSignal.timeout(30000),
+    headers: token ? { Authorization: `Bearer ${token}` } : {} });
   if (!response.ok) throw new Error(`Release metadata HTTP ${response.status}`);
   release = await response.json();
 }
