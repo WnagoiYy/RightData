@@ -65,12 +65,13 @@ async function download(address, limit) {
 }
 
 const results = [];
-for (const target of ['windows-x64', 'macos-arm64', 'macos-x64']) {
-  const [platform, arch] = target.split('-');
+for (const target of ['windows-x64', 'macos-arm64', 'macos-x64', 'server-windows-x64']) {
+  const isServer = target.startsWith('server-');
+  const [platform, arch] = (isServer ? target.slice(7) : target).split('-');
   const manifestName = `latest-${target}.json`;
   // Exercise the exact latest URL used by the client, including GitHub redirects.
   const manifest = JSON.parse(await download(`https://github.com/${repository}/releases/latest/download/${manifestName}`, 262144));
-  const name = `RightData-${version}-${target}.${platform === 'windows' ? 'exe' : 'dmg'}`;
+  const name = isServer ? `RightDataServer-${version}-windows-x64.zip` : `RightData-${version}-${target}.${platform === 'windows' ? 'exe' : 'dmg'}`;
   const asset = release.assets.find(item => item.name === name);
   if (!asset || manifest.fileName !== name || manifest.version !== version || manifest.platform !== platform || manifest.arch !== arch || manifest.downloadUrl !== asset.browser_download_url || manifest.size !== asset.size || `sha256:${manifest.sha256}` !== asset.digest) throw new Error(`Release metadata mismatch: ${target}`);
   const bytes = await download(manifest.downloadUrl, asset.size);

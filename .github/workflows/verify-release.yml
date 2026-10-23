@@ -1,15 +1,14 @@
 name: Verify published release
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - deploy/github/verify-release.mjs
-      - .github/workflows/verify-release.yml
+  workflow_run:
+    workflows: ['RightData release']
+    types: [completed]
 permissions:
   contents: read
 jobs:
   verify:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -17,7 +16,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Download and independently verify every published installer
+      - name: Download and independently verify every published package
         run: node deploy/github/verify-release.mjs
       - uses: actions/upload-artifact@v4
         with:
