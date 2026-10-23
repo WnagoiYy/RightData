@@ -21,8 +21,8 @@ jobs:
       - name: Build and test with glibc 2.28
         shell: bash
         run: |
-          docker run --rm -v "$PWD:/work" -v "$(go env GOROOT):/opt/go:ro" -w /work \
-            -e GITHUB_SHA quay.io/pypa/manylinux_2_28_x86_64 \
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" -v "$(go env GOROOT):/opt/go:ro" -w /work \
+            -e GITHUB_SHA quay.io/pypa/manylinux_2_28_x86_64@sha256:076b19ef6e698f28649fa817c49d14443201e01da85240e8e52f93e8daa49bff \
             bash deploy/github/build-server-linux.sh
       - name: Sign Linux server package
         env:

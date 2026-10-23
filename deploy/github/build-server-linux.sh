@@ -3,8 +3,10 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 export PATH="/opt/go/bin:/opt/python/cp311-cp311/bin:$PATH"
 export CGO_ENABLED=1 GOAMD64=v1
+export GOFLAGS=-buildvcs=false
 export CGO_LDFLAGS='-static-libstdc++ -static-libgcc'
 export GOCACHE="$PWD/test/build/go-cache" GOTMPDIR="$PWD/test/runtime/go-build"
+export GOPATH="$PWD/test/build/go-path" GOTELEMETRY=off
 export TMPDIR="$PWD/test/runtime"
 mkdir -p "$GOCACHE" "$GOTMPDIR" test/artifacts/release
 version=$(python3 -c 'import json; print(json.load(open("client/package.json"))["version"])')
