@@ -2,6 +2,8 @@
 
 面向海光 C86（x86_64）及 BC Linux 22.10，最低 glibc 2.28。构建在 glibc 2.28 容器内进行；随包 `preflight.sh` 检查目标系统架构、主程序和离线扩展的动态库。BC Linux 的具体补丁版本与海光实机仍需在公司服务器验收。无需安装 Go、Node.js、Python 或独立数据库服务。
 
+系统还需提供 `libstdc++.so.6` 和 `libgcc_s.so.1`；已核对发布二进制的最高 C++ 符号要求为 `GLIBCXX_3.4.22`、`CXXABI_1.3.11`。预检会报告缺少的库或符号版本。
+
 ## 安装
 
 从同一 GitHub Release 取得 `RightDataServer-版本-linux-x64.tar.gz`、对应 `.minisig` 和 `latest-server-linux-x64.json`，在联网机器先核对清单 SHA-256，并使用仓库 `client/update-public-key.pub` 验证 Minisign 签名，再将完整包传入服务器。公钥可写为 minisign 的 `-P` 参数；验证命令为 `minisign -Vm 包名.tar.gz -P 公钥内容`。

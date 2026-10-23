@@ -11,6 +11,7 @@ $installDirectory = Join-Path $project 'test/runtime/installed-client'
 $dataDirectory = Join-Path $env:ProgramData 'RightData/network'
 function Invoke-Installer([string]$Executable, [string]$Arguments) {
     $process = Start-Process -FilePath $Executable -ArgumentList $Arguments -WindowStyle Hidden -PassThru
+    [void]$process.Handle
     if (-not $process.WaitForExit(120000)) {
         Stop-Process -Id $process.Id -Force
         throw 'Installer timed out; no interactive dialogs are accepted in CI'
