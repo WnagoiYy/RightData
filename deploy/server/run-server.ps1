@@ -11,6 +11,6 @@ $env:RIGHTDATA_ADMIN_USERNAME = $secret.username
 $env:RIGHTDATA_ADMIN_PASSWORD = $secret.password
 $env:RIGHTDATA_DUCKDB_EXTENSION = "$release/resource/duckdb/v2.0.0/windows_amd64_mingw/httpfs.duckdb_extension"
 $env:RIGHTDATA_COOKIE_SECURE = 'true'
-Set-Location $release
+Set-Location $root
 & "$release/rightdata.exe" >> "$root/logs/server.log" 2>&1
 exit $LASTEXITCODE

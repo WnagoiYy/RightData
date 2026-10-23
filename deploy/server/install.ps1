@@ -5,6 +5,10 @@ New-Item -ItemType Directory -Path $Root -Force | Out-Null
 & icacls.exe $Root /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
 if ($LASTEXITCODE) { throw 'Cannot restrict deployment ACL' }
 foreach ($directory in @('tools','releases','downloads','logs','backups','data')) { New-Item -ItemType Directory -Path "$Root/$directory" -Force | Out-Null }
+if (-not (Test-Path "$Root/config.json")) {
+    # GoFrame needs a config source even when deployment values use environment variables.
+    [IO.File]::WriteAllText("$Root/config.json", '{}')
+}
 if (-not (Test-Path "$Root/tools/node.exe")) { Copy-Item -LiteralPath $NodePath -Destination "$Root/tools/node.exe" }
 if (-not (Test-Path "$Root/credentials.json")) {
     $rng = [Security.Cryptography.RandomNumberGenerator]::Create()

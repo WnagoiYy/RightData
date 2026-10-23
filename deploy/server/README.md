@@ -2,6 +2,7 @@
 
 - 主机：`dacp-internal` SSH 配置指向 dacp；内网服务为 `http://192.168.3.123:8003`，监听 `0.0.0.0:8003`。
 - 根目录：`C:\ProgramData\RightDataServer`。`data` 独立于版本目录，首次初始化新实例。
+- `config.json` 是部署时生成的 GoFrame 配置入口，和版本 ZIP 分离；监听地址、数据目录与凭据由启动脚本注入。
 - `RightData-Server` 计划任务以 SYSTEM 身份开机启动；凭据、数据及部署脚本仅 SYSTEM 和本机管理员可读写。
 - `credentials.json` 保存初始管理员账号、密码和保护主密钥。不得上传 GitHub；完整恢复时必须保留该文件。服务日志不包含密码。
 - Windows 防火墙允许本地子网访问 TCP 8003；文档 Cookie 保持 Secure，桌面业务使用 Bearer Token。
