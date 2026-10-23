@@ -2,6 +2,14 @@ name: Verify published release
 on:
   workflow_dispatch:
     inputs:
+      release_version:
+        description: Exact published version to verify, or empty for latest stable
+        type: string
+        default: ''
+      test_service_script:
+        description: Test the current service lifecycle script against the signed service binary
+        type: boolean
+        default: false
       test_windows_installer:
         description: Run the real Windows installation lifecycle on an ephemeral runner
         type: boolean
@@ -13,7 +21,7 @@ permissions:
   contents: read
 jobs:
   windows-install:
-    if: github.event_name == 'workflow_dispatch' && inputs.test_windows_installer
+    if: github.event_name == 'workflow_dispatch' && (inputs.test_windows_installer || inputs.test_service_script)
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
@@ -24,11 +32,19 @@ jobs:
       - name: Verify signed release before execution
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          RIGHTDATA_VERIFY_VERSION: ${{ inputs.release_version || '' }}
         run: node deploy/github/verify-release.mjs
-      - name: Install, upgrade, restart, uninstall and reinstall
+      - name: Verify current Windows service lifecycle script
+        if: inputs.test_service_script
         shell: powershell
         run: |
-          $version = (Get-Content client/package.json -Raw | ConvertFrom-Json).version
+          $version = (Get-Content test/results/release-verification.json -Raw | ConvertFrom-Json).version
+          ./test/client/service-lifecycle-integration.ps1 -Package "test/artifacts/release-$version/RightData-$version-windows-x64.exe"
+      - name: Install, upgrade, restart, uninstall and reinstall
+        if: inputs.test_windows_installer
+        shell: powershell
+        run: |
+          $version = (Get-Content test/results/release-verification.json -Raw | ConvertFrom-Json).version
           ./test/client/installer-integration.ps1 -Package "test/artifacts/release-$version/RightData-$version-windows-x64.exe"
   verify:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
@@ -42,6 +58,7 @@ jobs:
       - name: Download and independently verify every published package
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          RIGHTDATA_VERIFY_VERSION: ${{ inputs.release_version || '' }}
         run: node deploy/github/verify-release.mjs
       - uses: actions/upload-artifact@v4
         with:

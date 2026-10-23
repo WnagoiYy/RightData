@@ -4,7 +4,9 @@ import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
 const repository = 'WnagoiYy/RightData';
-const apiUrl = `https://api.github.com/repos/${repository}/releases/latest`;
+const requestedVersion = process.env.RIGHTDATA_VERIFY_VERSION || '';
+if (requestedVersion && !/^\d+\.\d+\.\d+$/.test(requestedVersion)) throw new Error('Invalid requested version');
+const apiUrl = `https://api.github.com/repos/${repository}/releases/${requestedVersion ? `tags/v${requestedVersion}` : 'latest'}`;
 let release;
 if (process.env.RIGHTDATA_VERIFY_CURL === '1') {
   const result = spawnSync('curl', ['--fail', '--silent', '--show-error', '--retry', '3', '--retry-all-errors', '--max-time', '30', apiUrl], { encoding: 'utf8', windowsHide: true, maxBuffer: 1048576 });
@@ -72,7 +74,8 @@ for (const target of ['windows-x64', 'macos-arm64', 'macos-x64', 'server-windows
   const [platform, arch] = (isServer ? target.slice(7) : target).split('-');
   const manifestName = `latest-${target}.json`;
   // Exercise the exact latest URL used by the client, including GitHub redirects.
-  const manifest = JSON.parse(await download(`https://github.com/${repository}/releases/latest/download/${manifestName}`, 262144));
+  const manifestPath = requestedVersion ? `download/v${version}` : 'latest/download';
+  const manifest = JSON.parse(await download(`https://github.com/${repository}/releases/${manifestPath}/${manifestName}`, 262144));
   const name = isServer ? `RightDataServer-${version}-${platform}-x64.${platform === 'windows' ? 'zip' : 'tar.gz'}` : `RightData-${version}-${target}.${platform === 'windows' ? 'exe' : 'dmg'}`;
   const asset = release.assets.find(item => item.name === name);
   if (!asset || manifest.fileName !== name || manifest.version !== version || manifest.platform !== platform || manifest.arch !== arch || manifest.downloadUrl !== asset.browser_download_url || manifest.size !== asset.size || `sha256:${manifest.sha256}` !== asset.digest) throw new Error(`Release metadata mismatch: ${target}`);

@@ -48,9 +48,11 @@ test("installer lifecycle is fixed-scope and preserves service data", async () =
 
   assert.match(lifecycle, /\$serviceName\s*=\s*'RightDataNetwork'/);
   assert.match(lifecycle, /\$firewallRuleName\s*=\s*'RightDataNetwork-Program-v1'/);
-  assert.match(lifecycle, /'obj= LocalSystem'/);
-  assert.match(lifecycle, /'start= demand'/);
-  assert.doesNotMatch(lifecycle, /'start= auto'/);
+  assert.match(lifecycle, /'obj=', 'LocalSystem'/);
+  assert.match(lifecycle, /'start=', 'demand'/);
+  assert.doesNotMatch(lifecycle, /'start=', 'auto'/);
+  assert.match(lifecycle, /'binPath=', \$binaryPath/);
+  assert.match(lifecycle, /ConvertTo-NativeArgument/);
   assert.match(lifecycle, /--service --data-dir/);
   assert.match(lifecycle, /--controller-sid/);
   assert.match(lifecycle, /S-1-5-21/);

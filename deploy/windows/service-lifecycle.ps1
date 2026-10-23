@@ -167,11 +167,33 @@ function Invoke-ServiceControl {
         [int[]]$AllowedExitCodes = @(0)
     )
 
-    & $scExe @Arguments | Out-Null
-    $exitCode = $LASTEXITCODE
+    # sc.exe requires each option name (including '=') and its value as distinct
+    # argv entries. Serialize explicitly because Windows PowerShell 5.1 strips
+    # embedded quotes from executable paths when invoking native tools directly.
+    $startInfo = New-Object Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $scExe
+    $startInfo.Arguments = ($Arguments | ForEach-Object { ConvertTo-NativeArgument $_ }) -join ' '
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $process = [Diagnostics.Process]::Start($startInfo)
+    try {
+        $output = $process.StandardOutput.ReadToEnd()
+        $errorOutput = $process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        $exitCode = $process.ExitCode
+    } finally { $process.Dispose() }
     if ($exitCode -notin $AllowedExitCodes) {
-        throw "sc.exe $($Arguments[0]) failed with exit code $exitCode."
+        throw "sc.exe $($Arguments[0]) failed with exit code ${exitCode}: $output $errorOutput"
     }
+}
+
+function ConvertTo-NativeArgument {
+    param([AllowEmptyString()][string]$Value)
+    # CommandLineToArgvW: double backslashes before a quote or the closing quote.
+    '"' + [regex]::Replace([regex]::Replace($Value, '(\\*)"', '$1$1\"'), '(\\+)$', '$1$1') + '"'
 }
 
 function Get-ServiceSecurityDescriptor {
@@ -314,12 +336,12 @@ function Install-RightDataService {
     if ($null -eq (Get-RightDataService)) {
         Invoke-ServiceControl -Arguments @(
             'create', $serviceName,
-            "binPath= $binaryPath",
-            'start= demand',
-            'type= own',
-            'error= normal',
-            'obj= LocalSystem',
-            "DisplayName= $displayName"
+            'binPath=', $binaryPath,
+            'start=', 'demand',
+            'type=', 'own',
+            'error=', 'normal',
+            'obj=', 'LocalSystem',
+            'DisplayName=', $displayName
         )
         Invoke-ServiceControl -Arguments @(
             'description', $serviceName,
@@ -330,11 +352,11 @@ function Install-RightDataService {
         # Preserve the user's current automatic/manual startup choice on upgrades.
         Invoke-ServiceControl -Arguments @(
             'config', $serviceName,
-            "binPath= $binaryPath",
-            'type= own',
-            'error= normal',
-            'obj= LocalSystem',
-            "DisplayName= $displayName"
+            'binPath=', $binaryPath,
+            'type=', 'own',
+            'error=', 'normal',
+            'obj=', 'LocalSystem',
+            'DisplayName=', $displayName
         )
     }
 
