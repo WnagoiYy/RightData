@@ -1,4 +1,6 @@
 mod control;
+#[path = "../../platform/build_defaults.rs"]
+mod build_defaults;
 mod discovery;
 mod network;
 mod proxy;

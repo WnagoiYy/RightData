@@ -89,7 +89,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            server_url: "http://127.0.0.1:8003".into(),
+            server_url: crate::build_defaults::SERVER_URL.into(),
             discovery_url: None,
             bound_instance_id: None,
             allow_public_relay: false,

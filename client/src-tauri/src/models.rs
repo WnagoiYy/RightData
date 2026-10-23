@@ -14,7 +14,7 @@ pub struct ConnectionSettings {
 impl Default for ConnectionSettings {
     fn default() -> Self {
         Self {
-            server_url: "http://127.0.0.1:8003".to_string(),
+            server_url: crate::build_defaults::SERVER_URL.to_string(),
             discovery_url: None,
             allow_public_relay: false,
             bound_instance_id: None,

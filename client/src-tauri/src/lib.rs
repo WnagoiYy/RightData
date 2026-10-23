@@ -1,4 +1,6 @@
 mod client_events;
+#[path = "../../platform/build_defaults.rs"]
+mod build_defaults;
 mod commands;
 mod error;
 mod models;

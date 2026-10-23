@@ -5,10 +5,12 @@ const tag = `v${version}`;
 if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== tag) throw new Error('Tag and package version differ');
 const directory = 'test/artifacts/release';
 const files = await readdir(directory);
+const server = JSON.parse(await readFile(`${directory}/latest-server-windows-x64.json`));
+if (server.version !== version || !files.includes(server.fileName) || !files.includes(`${server.fileName}.minisig`)) throw new Error('Incomplete server package');
 for (const target of ['windows-x64', 'macos-arm64', 'macos-x64']) {
   const manifest = JSON.parse(await readFile(`${directory}/latest-${target}.json`));
   if (manifest.version !== version || !files.includes(manifest.fileName) || !files.includes(`${manifest.fileName}.minisig`)) throw new Error(`Incomplete ${target}`);
 }
 const result = spawnSync('gh', ['release', 'create', tag, ...files.map(file => `${directory}/${file}`), '--target', process.env.GITHUB_SHA,
-  '--title', `RightData ${version}`, '--notes', 'Windows x64、macOS Apple Silicon、macOS Intel。安装包不包含 WebView 运行时；macOS 使用 ad-hoc 签名，未公证。更新安装包附带 Minisign 签名与 SHA-256 清单。'], { stdio: 'inherit' });
+  '--title', `RightData ${version}`, '--notes', '客户端 Windows x64、macOS Apple Silicon、macOS Intel；后端 Windows x64。正式客户端默认连接 192.168.3.123:8003，开发构建使用本机 8003，已保存的连接设置保持不变。客户端安装包不包含 WebView 运行时；macOS 使用 ad-hoc 签名。所有发布包附带 Minisign 签名和 SHA-256 清单。'], { stdio: 'inherit' });
 if (result.status !== 0) throw new Error('Release publication failed; existing releases are never overwritten');

@@ -1,4 +1,4 @@
-name: Desktop release
+name: RightData release
 on:
   workflow_dispatch:
   push:
@@ -6,6 +6,39 @@ on:
 permissions:
   contents: read
 jobs:
+  server:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.2'
+          cache-dependency-path: |
+            server/go.sum
+            test/server/go.sum
+      - name: Locate MinGW
+        shell: pwsh
+        run: |
+          $gcc = Get-ChildItem C:/mingw64/bin/gcc.exe, C:/msys64/mingw64/bin/gcc.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $gcc) { throw 'MinGW GCC is required' }
+          $gcc.DirectoryName >> $env:GITHUB_PATH
+      - name: Test, package and sign server
+        shell: pwsh
+        env:
+          CGO_ENABLED: '1'
+          RIGHTDATA_UPDATE_SIGNING_KEY: ${{ secrets.RIGHTDATA_UPDATE_SIGNING_KEY }}
+        run: ./deploy/github/build-server.ps1
+      - name: Verify deployment package rejection cases
+        run: node --test test/client/server-package.test.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-windows-x64
+          path: test/artifacts/release/*
+          if-no-files-found: error
   build:
     strategy:
       fail-fast: false
@@ -53,6 +86,14 @@ jobs:
       - name: Frontend build
         working-directory: client
         run: npm run build
+      - name: Verify development and production defaults
+        shell: bash
+        run: |
+          mkdir -p test/build
+          rustc --test client/platform/build_defaults.rs -o test/build/defaults-debug
+          ./test/build/defaults-debug
+          rustc --test -C debug-assertions=no client/platform/build_defaults.rs -o test/build/defaults-release
+          ./test/build/defaults-release
       - name: Prepare test bundle resource
         run: node deploy/github/prepare-test-resource.mjs
       - name: Native client unit tests
@@ -70,7 +111,7 @@ jobs:
           path: test/artifacts/release/*
           if-no-files-found: error
   publish:
-    needs: build
+    needs: [build, server]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -80,7 +121,7 @@ jobs:
         with:
           path: test/artifacts/release
           merge-multiple: true
-      - name: Publish three verified packages together
+      - name: Publish client and server packages together
         env:
           GH_TOKEN: ${{ github.token }}
         run: node deploy/github/publish-release.mjs
