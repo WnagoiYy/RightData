@@ -8,7 +8,7 @@ $remoteRoot='C:/ProgramData/RightDataServer'
 $incoming="$remoteRoot/downloads/$($manifest.version)"
 function Invoke-Remote([string]$Script) {
     $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes("`$ErrorActionPreference='Stop'; `$ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); $Script"))
-    & ssh -o BatchMode=yes $SshHost powershell -NoProfile -NonInteractive -EncodedCommand $encoded
+    & ssh -o BatchMode=yes $SshHost powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encoded
     if ($LASTEXITCODE) { throw 'Remote deployment command failed' }
 }
 Invoke-Remote "New-Item -ItemType Directory -Force -Path '$remoteRoot', '$incoming' | Out-Null"
