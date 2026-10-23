@@ -48,7 +48,7 @@ function Get-ConfiguredControllerSid {
     $imagePath = (Get-ItemProperty -LiteralPath $serviceRegistryPath -Name ImagePath -ErrorAction Stop).ImagePath
     $match = [regex]::Match(
         $imagePath,
-        '(?i)(?:^|\s)--controller-sid\s+(?:"(?<sid>S-1-5-[0-9-]+)"|(?<sid>S-1-5-[0-9-]+))(?:\s|$)'
+        '(?i)(?:^|\s)--controller-sid\s+(?:"(?<sid>S-1-[0-9-]+)"|(?<sid>S-1-[0-9-]+))(?:\s|$)'
     )
     if (-not $match.Success) {
         return $null
@@ -273,7 +273,7 @@ function Grant-ControllerServiceStartAccess {
     )
     $insertIndex = $dacl.Count
     for ($index = 0; $index -lt $dacl.Count; $index++) {
-        if (($dacl[$index].AceFlags -band [System.Security.AccessControl.AceFlags]::Inherited) -ne 0) {
+        if (([int]($dacl[$index].AceFlags) -band [int][System.Security.AccessControl.AceFlags]::Inherited) -ne 0) {
             $insertIndex = $index
             break
         }
