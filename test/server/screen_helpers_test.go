@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gogf/gf/v2/net/ghttp"
+
 	"server/app"
 )
 
@@ -105,7 +107,7 @@ func screenSetDuckDBExtension(t *testing.T) {
 	t.Setenv("RIGHTDATA_DUCKDB_EXTENSION", matches[0])
 }
 
-func screenStartServer(t *testing.T) (*app.App, string, *http.Client) {
+func screenStartServer(t *testing.T, configure ...func(*ghttp.Server)) (*app.App, string, *http.Client) {
 	t.Helper()
 	screenSetDuckDBExtension(t)
 	a, err := app.Open(screenTestContext(t), app.Config{
@@ -116,6 +118,9 @@ func screenStartServer(t *testing.T) (*app.App, string, *http.Client) {
 		t.Fatal(err)
 	}
 	server := app.NewServer(a)
+	for _, setup := range configure {
+		setup(server)
+	}
 	if err = server.Start(); err != nil {
 		_ = a.Close()
 		t.Fatal(err)

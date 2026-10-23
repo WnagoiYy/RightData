@@ -24,7 +24,7 @@ async function job(id) {
   }
   throw new Error('Job timed out');
 }
-const probe = await api('/api/v1/probe');
+const probe = await api('/api/probe');
 assert.equal(probe.service, 'RightData');
 assert.equal(probe.ready, true);
 const unauthorized = await fetch(`${base}/api/v1/datasets`, { signal: AbortSignal.timeout(10000) });

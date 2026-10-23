@@ -11,7 +11,7 @@ GitHub 发布工作流在 `v*` 标签上执行后端 Go 测试、前端和 Rust 
 dacp 不直接访问 GitHub。先在联网机器取得同一次 Release 中的后端 ZIP 和 `latest-server-windows-x64.json`，再执行：
 
 ```powershell
-./deploy/server/deploy-ssh.ps1 -PackageDirectory ./test/artifacts/release-0.1.2
+./deploy/server/deploy-ssh.ps1 -PackageDirectory ./test/artifacts/release-0.1.3
 ```
 
 部署脚本通过 SSH/SCP 传输，dacp 使用预置公钥验证包、版本和签名，然后停止旧进程、备份静止数据、启动新版本并验证实例 ID 和就绪状态。健康检查失败时保留失败数据并恢复旧版本和备份。相同或更低版本不会重装。备份保留在 `backups`，由管理员按保留策略清理。

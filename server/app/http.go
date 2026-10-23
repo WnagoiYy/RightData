@@ -48,6 +48,11 @@ func writeError(r *ghttp.Request, err error) {
 }
 func responseMiddleware(r *ghttp.Request) {
 	r.Middleware.Next()
+	// ServeContent writes directly, including bodyless 304 responses. Do not
+	// append an envelope after the raw writer has committed headers or bytes.
+	if r.Response.IsHeaderWrote() || r.Response.BytesWritten() > 0 {
+		return
+	}
 	if err := r.GetError(); err != nil {
 		writeError(r, err)
 		return
