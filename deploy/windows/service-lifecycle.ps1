@@ -69,7 +69,10 @@ function Get-SessionAccount {
     # cannot reliably inspect the 64-bit Explorer process. WTS is bitness-neutral
     # and returns the desktop owner even when UAC uses another administrator.
     if (-not ('RightData.InstallerSession' -as [type])) {
-        Add-Type -TypeDefinition @'
+        # NSIS ships a native System.dll in its working directory. Resolve the
+        # managed reference explicitly so CodeDOM cannot mistake that plugin for
+        # the .NET Framework assembly while compiling this WTS wrapper.
+        Add-Type -ReferencedAssemblies ([ComponentModel.Win32Exception].Assembly.Location) -TypeDefinition @'
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
