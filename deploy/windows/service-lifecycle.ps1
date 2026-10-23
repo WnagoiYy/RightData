@@ -27,8 +27,8 @@ function Assert-ControllerSid {
         [string]$Sid
     )
 
-    # Interactive local/domain accounts use an account-domain SID plus a RID.
-    if ($Sid -notmatch '^S-1-5-21(?:-[0-9]+){4}$') {
+    # Local/domain and Microsoft Entra user SIDs, never group/system identities.
+    if ($Sid -notmatch '^(?:S-1-5-21(?:-[0-9]+){4}|S-1-12-1(?:-[0-9]+){4})$') {
         throw "Invalid controller user SID: $Sid"
     }
     try {
@@ -59,19 +59,51 @@ function Get-ConfiguredControllerSid {
     $sid
 }
 
-function Get-InteractiveControllerSid {
-    $sessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId
-    $shell = Get-Process -Name explorer -IncludeUserName -ErrorAction SilentlyContinue |
-        Where-Object {
-            $_.SessionId -eq $sessionId -and
-            $_.Path -eq (Join-Path $env:SystemRoot 'explorer.exe')
-        } |
-        Select-Object -First 1
-    if ($null -eq $shell -or [string]::IsNullOrWhiteSpace($shell.UserName)) {
-        throw 'Could not determine the interactive user for this installer session.'
-    }
+function Get-InstallerSessionId {
+    [Diagnostics.Process]::GetCurrentProcess().SessionId
+}
 
-    $account = New-Object System.Security.Principal.NTAccount($shell.UserName)
+function Get-SessionAccount {
+    param([int]$SessionId)
+    # NSIS can launch 32-bit PowerShell on 64-bit Windows. Process.Path then
+    # cannot reliably inspect the 64-bit Explorer process. WTS is bitness-neutral
+    # and returns the desktop owner even when UAC uses another administrator.
+    if (-not ('RightData.InstallerSession' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+namespace RightData {
+    public static class InstallerSession {
+        [DllImport("wtsapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern bool WTSQuerySessionInformationW(IntPtr server, int session, int info, out IntPtr buffer, out int length);
+        [DllImport("wtsapi32.dll")]
+        private static extern void WTSFreeMemory(IntPtr buffer);
+        public static string Query(int session, int info) {
+            IntPtr buffer = IntPtr.Zero;
+            int length;
+            try {
+                if (!WTSQuerySessionInformationW(IntPtr.Zero, session, info, out buffer, out length))
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                return buffer == IntPtr.Zero ? "" : Marshal.PtrToStringUni(buffer);
+            } finally { if (buffer != IntPtr.Zero) WTSFreeMemory(buffer); }
+        }
+    }
+}
+'@
+    }
+    $user = [RightData.InstallerSession]::Query($SessionId, 5)
+    $domain = [RightData.InstallerSession]::Query($SessionId, 7)
+    if ([string]::IsNullOrWhiteSpace($user)) { throw 'No signed-in user in this Windows session.' }
+    if ([string]::IsNullOrWhiteSpace($domain)) { return $user }
+    "$domain\$user"
+}
+
+function Get-InteractiveControllerSid {
+    $sessionId = Get-InstallerSessionId
+    if ($sessionId -le 0) { throw 'First installation requires a signed-in desktop session (console or Remote Desktop).' }
+    $name = Get-SessionAccount -SessionId $sessionId
+    $account = New-Object System.Security.Principal.NTAccount($name)
     $sid = $account.Translate([System.Security.Principal.SecurityIdentifier]).Value
     Assert-ControllerSid -Sid $sid
     $sid

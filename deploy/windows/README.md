@@ -2,6 +2,8 @@
 
 本目录提供 x64 Windows 的 NSIS 打包和 `RightDataNetwork` 服务生命周期脚本。安装包采用每机安装，网络服务以 `LocalSystem` 运行，并将本机控制权限绑定到执行首次安装的交互式 Windows 用户。服务首次注册为手动启动；客户端需要连接且服务尚未运行时，可以按需启动固定的 `RightDataNetwork` 服务。
 
+首次安装使用 Windows WTS 接口查询安装器所在桌面会话，兼容 32 位 PowerShell 调用、远程桌面及以另一管理员身份进行 UAC 提权。升级保留已绑定 SID，不重新依赖 Explorer。首次安装要求控制台或远程桌面存在已登录用户，不支持 SYSTEM 会话 0 的无人值守首次绑定。
+
 ## 生成安装包
 
 构建机需要 Node.js、已安装依赖的 `client/node_modules`、Rust MSVC 工具链、Windows SDK 和可用的 PowerShell 5.1。首次构建需要取得 Rust 和 npm 依赖。安装包不包含、下载或安装 WebView2，目标电脑需已具备系统 WebView2 Runtime。

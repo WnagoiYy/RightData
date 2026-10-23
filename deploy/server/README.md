@@ -7,7 +7,7 @@
 - `credentials.json` 保存初始管理员账号、密码和保护主密钥。不得上传 GitHub；完整恢复时必须保留该文件。服务日志不包含密码。
 - Windows 防火墙允许本地子网访问 TCP 8003；文档 Cookie 保持 Secure，桌面业务使用 Bearer Token。
 
-GitHub 发布工作流在 `v*` 标签上执行后端 Go 测试、前端和 Rust 测试，生成三个客户端包与后端 Windows x64 ZIP，全部成功才发布。后端包带离线 DuckDB 扩展、所需 MinGW DLL、SHA-256 与 Minisign 签名。
+GitHub 发布工作流在 `v*` 标签上执行后端 Go 测试、前端和 Rust 测试，生成三个客户端包、后端 Windows x64 ZIP 和 Linux x64 tar.gz，全部成功才发布。后端包带离线 DuckDB 扩展、SHA-256 与 Minisign 签名；Windows 包附带所需 MinGW DLL。Linux 的安装、依赖和备份说明见 [Linux 部署](linux/README.md)。
 
 dacp 不直接访问 GitHub。先在联网机器取得同一次 Release 中的后端 ZIP 和 `latest-server-windows-x64.json`，再执行：
 

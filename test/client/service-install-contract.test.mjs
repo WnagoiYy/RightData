@@ -53,8 +53,9 @@ test("installer lifecycle is fixed-scope and preserves service data", async () =
   assert.doesNotMatch(lifecycle, /'start= auto'/);
   assert.match(lifecycle, /--service --data-dir/);
   assert.match(lifecycle, /--controller-sid/);
-  assert.match(lifecycle, /\^S-1-5-21/);
-  assert.match(lifecycle, /Get-Process -Name explorer -IncludeUserName/);
+  assert.match(lifecycle, /S-1-5-21/);
+  assert.match(lifecycle, /WTSQuerySessionInformationW/);
+  assert.doesNotMatch(lifecycle, /Get-Process -Name explorer/);
   assert.match(lifecycle, /Get-ConfiguredControllerSid/);
   assert.match(lifecycle, /SetAccessRuleProtection\(\$true, \$false\)/);
   assert.match(lifecycle, /S-1-5-18/);

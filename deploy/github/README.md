@@ -8,6 +8,7 @@
 | macOS Apple Silicon | macos-15 | `.dmg` |
 | macOS Intel | macos-15-intel | `.dmg` |
 | 后端 Windows x64 | windows-latest | 签名 `.zip`，含离线 DuckDB 扩展 |
+| 后端 Linux x64 | ubuntu-latest / manylinux_2_28 | 签名 `.tar.gz`，含离线扩展及 systemd 安装脚本 |
 
 包均不包含 WebView 运行时。Windows 使用已安装的系统 WebView2，macOS 使用系统 WebKit；macOS 最低声明版本为 12.0。应用与内嵌网络服务均按目标原生架构构建。
 
@@ -23,7 +24,7 @@
 
 `sign-release.mjs` 使用标准 Ed25519/BLAKE2b 生成 Minisign 预哈希签名；测试夹具由原生 `minisign-verify` 验证，避免仅由签名脚本自身验证。
 
-发布成功后自动运行 Verify published release，也可手动运行或在本机执行 `node deploy/github/verify-release.mjs`。它通过 latest URL 获取四份清单，重新下载三个客户端包和后端包，与 GitHub 资产大小/摘要对照，并独立校验 Ed25519 包签名、trusted comment 签名和 `.minisig` 附件。只使用公开公钥，不读取发布私钥。本机需要 curl 访问代理时可设置 `RIGHTDATA_VERIFY_CURL=1`。dacp 无 GitHub 网络，使用本机下载并通过 [SSH 部署脚本](../server/README.md) 传输；GitHub 不直接连接私网主机。
+发布成功后自动运行 Verify published release，也可手动运行或在本机执行 `node deploy/github/verify-release.mjs`。它通过 latest URL 获取五份清单，重新下载三个客户端包和两个后端包，与 GitHub 资产大小/摘要对照，并独立校验 Ed25519 包签名、trusted comment 签名和 `.minisig` 附件。只使用公开公钥，不读取发布私钥。本机需要 curl 访问代理时可设置 `RIGHTDATA_VERIFY_CURL=1`。dacp 无 GitHub 网络，使用本机下载并通过 [SSH 部署脚本](../server/README.md) 传输；GitHub 不直接连接私网主机。
 
 ## 本机构建
 

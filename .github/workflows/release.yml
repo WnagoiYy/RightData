@@ -6,6 +6,46 @@ on:
 permissions:
   contents: read
 jobs:
+  server-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.2'
+          cache: false
+      - name: Build and test with glibc 2.28
+        shell: bash
+        run: |
+          docker run --rm -v "$PWD:/work" -v "$(go env GOROOT):/opt/go:ro" -w /work \
+            -e GITHUB_SHA quay.io/pypa/manylinux_2_28_x86_64 \
+            bash deploy/github/build-server-linux.sh
+      - name: Sign Linux server package
+        env:
+          RIGHTDATA_UPDATE_SIGNING_KEY: ${{ secrets.RIGHTDATA_UPDATE_SIGNING_KEY }}
+        run: node deploy/github/sign-server.mjs test/artifacts/release/RightDataServer-$(node -p 'require("./client/package.json").version')-linux-x64.tar.gz linux
+      - name: Verify real systemd installation
+        shell: bash
+        run: |
+          version=$(node -p 'require("./client/package.json").version')
+          sudo bash "test/build/server-linux-$version/install.sh"
+          sudo systemctl restart rightdata-server
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8003/api/probe | python3 -c 'import sys,json; p=json.load(sys.stdin)["data"]; assert p["service"]=="RightData" and p["ready"]'; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8003/api/probe | python3 -c 'import sys,json; assert json.load(sys.stdin)["data"]["ready"]'
+          test "$(systemctl show rightdata-server -p User --value)" = rightdata
+          sudo systemctl stop rightdata-server
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-linux-x64
+          path: test/artifacts/release/*
+          if-no-files-found: error
   server:
     runs-on: windows-latest
     timeout-minutes: 40
@@ -83,6 +123,15 @@ jobs:
         run: npm ci
       - name: Network service unit tests
         run: cargo test --locked --manifest-path client/network-service/Cargo.toml
+      - name: Windows installer session regression tests
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          ./test/client/installer-session.ps1
+          & "$env:SystemRoot/SysWOW64/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -ExecutionPolicy Bypass -File test/client/installer-session.ps1
+          if ($LASTEXITCODE) { throw '32-bit installer regression failed' }
+          node --test test/client/service-install-contract.test.mjs
+          if ($LASTEXITCODE) { throw 'Installer contracts failed' }
       - name: Frontend build
         working-directory: client
         run: npm run build
@@ -111,7 +160,7 @@ jobs:
           path: test/artifacts/release/*
           if-no-files-found: error
   publish:
-    needs: [build, server]
+    needs: [build, server, server-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
