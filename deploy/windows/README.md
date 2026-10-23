@@ -109,7 +109,11 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass `
 
 ## 当前验证范围
 
-目前已完成脚本静态约定测试、PowerShell 语法检查、NSIS hooks 编译检查、Windows 目标的网络服务编译和客户端 UI 自动化。尚未在干净的 Windows 10/11 机器上实际执行完整的 NSIS 首次安装、覆盖升级、卸载和重装，也未验证企业软件分发、断网 WebView2 安装、安装失败回滚及重启后的服务状态。发布前必须补齐这些真实安装验证，构建成功不能替代安装验收。
+已在 GitHub Windows runner 上通过真实 NSIS 首次安装、覆盖升级、服务停止与重启、卸载和重装，并核对控制用户 SID、启动偏好与设备身份保留。完整安装验收已加入发布工作流，必须通过后才能发布。另已验证 32/64 位 PowerShell 会话查询、带空格路径的 SCM 注册、服务 ACL 和防火墙规则。
+
+安装器的 NSIS 原生 `System.dll` 与 .NET 程序集同名，因此会话查询使用已加载 .NET 程序集的绝对路径编译，避免临时目录中的 DLL 名称冲突。安装脚本失败会在安装目录保留 `rightdata-install-error.log`；静默模式会返回非零退出码。
+
+尚未验证真实 Windows 10/11 桌面上的图形安装流程、企业软件分发、安装失败回滚及系统重启后的服务状态。客户端安装包不负责安装 WebView2 Runtime。
 
 静态安装约定测试：
 
