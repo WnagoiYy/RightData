@@ -21,6 +21,8 @@ npm run tauri dev
 cargo build --manifest-path client/network-service/Cargo.toml --target-dir client/target --target x86_64-pc-windows-msvc
 ```
 
+macOS 开发先在根目录运行 `cargo build --manifest-path client/network-service/Cargo.toml --target-dir client/target`，使原生调试客户端可找到同目录的网络服务。
+
 独立开发实例使用绝对 `--data-dir`；Windows 安装版以 `LocalSystem` 注册到 SCM，首装启动类型为手动，安装结束会启动一次。默认生产管道缺失且客户端执行状态查询或显式启动时，客户端只尝试按需启动固定的 `RightDataNetwork` 服务；自定义 `RIGHTDATA_NETWORK_PIPE` 仅用于隔离测试，绝不触发 SCM。控制权限绑定安装用户 SID。安装、升级、卸载脚本位于 `deploy/windows`；不要为调试注册或覆盖已安装服务。
 
 ## 已实现的业务界面

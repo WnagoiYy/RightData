@@ -6,11 +6,13 @@ The service owns transport and device identity. Tauri owns each user's business 
 
 Windows named pipe: `\\.\pipe\rightdata-network-v1`. Test instances select another pipe with `RIGHTDATA_NETWORK_PIPE`. Remote pipe clients are rejected. The DACL grants access only to SYSTEM, Administrators and the installation-bound controller SID, excluding permission to create pipe instances. Other interactive users cannot change the shared target or read the loopback proxy credential. Each connection carries one request and one response. A frame is a 4-byte big-endian length followed by UTF-8 JSON, at most 64 KiB.
 
+macOS uses `~/Library/Application Support/RightData/network/network.sock` with the same framing. The service is a per-user LaunchAgent; directory mode is 0700, socket mode is 0600, and both peers check the current UID. An exclusive lock prevents duplicate service processes; only an owned stale socket is removed during crash recovery. Debug clients can select an absolute `RIGHTDATA_NETWORK_SOCKET` without starting the installed service. The service survives desktop-client exit but stops at user logout.
+
 Request: `{ "v":1, "id":"uuid", "op":"status|configure|start|stop|autostart|logs", "config":{}, "autoStart":false, "limit":50, "offset":0 }`.
 
 Response: `{ "v":1, "id":"same uuid", "ok":true, "data":{} }`, or `{ "v":1, "id":"same uuid", "ok":false, "error":{"code":"...","message":"..."} }`.
 
-`configure` takes `{serverUrl, discoveryUrl?, boundInstanceId?, allowPublicRelay}`. `stop` pauses local transport and registration without terminating the control pipe; `start` resumes it. `autostart` changes only the SCM startup configuration. `status` and configuration commands return `{running,enabled,autoStart,deviceId,serverUrl,discoveryUrl,boundInstanceId,allowPublicRelay,proxyUrl,proxyToken,mode,ready,peerId?,lastError?}`.
+`configure` takes `{serverUrl, discoveryUrl?, boundInstanceId?, allowPublicRelay}`. `stop` pauses local transport and registration without terminating the control connection; `start` resumes it. `autostart` changes Windows SCM startup or macOS LaunchAgent login startup and persists the explicit user preference. On macOS the plist change applies at the next login without stopping the current process. `status` and configuration commands return `{running,enabled,autoStart,deviceId,serverUrl,discoveryUrl,boundInstanceId,allowPublicRelay,proxyUrl,proxyToken,mode,ready,peerId?,lastError?}`.
 
 The proxy token is for the native caller only. Do not send it to the WebView or persist it in browser storage. Configure reqwest with the loopback proxy and HTTP Basic credentials `rightdata:<proxyToken>`. The proxy accepts only the configured backend host and port; HTTP requests additionally require an `/api` path. HTTPS is tunneled end to end. Production peer transport rejects plain HTTP. A debug build can opt in for isolated tests with `RIGHTDATA_ALLOW_INSECURE_PEER_TEST=1`.
 

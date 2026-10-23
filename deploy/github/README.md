@@ -21,6 +21,8 @@
 
 `sign-release.mjs` 使用标准 Ed25519/BLAKE2b 生成 Minisign 预哈希签名；测试夹具由原生 `minisign-verify` 验证，避免仅由签名脚本自身验证。
 
+发布后可手动运行 Verify published release，或在本机执行 `node deploy/github/verify-release.mjs`。它通过客户端相同的 latest URL 获取三份清单，重新下载三个包，与 GitHub 资产大小/摘要对照，并独立校验 Ed25519 包签名、trusted comment 签名和 `.minisig` 附件。只使用公开公钥，不读取发布私钥。本机需要 curl 访问代理时可设置 `RIGHTDATA_VERIFY_CURL=1`。
+
 ## 本机构建
 
 在对应目标系统安装 Node.js、Rust 与系统开发工具，执行 `npm ci --prefix client`。设置发布签名 Secret 环境变量后，在项目根目录运行：

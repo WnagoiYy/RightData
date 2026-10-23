@@ -1,0 +1,26 @@
+name: Verify published release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - deploy/github/verify-release.mjs
+      - .github/workflows/verify-release.yml
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Download and independently verify every published installer
+        run: node deploy/github/verify-release.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-verification
+          path: test/results/release-verification.json
+          if-no-files-found: error

@@ -34,6 +34,7 @@ for (const file of files) {
 }
 await mkdir(join(destination, '.github/workflows'), { recursive: true });
 await copyFile(join(root, 'deploy/github/workflows/release.yml'), join(destination, '.github/workflows/release.yml'));
+await copyFile(join(root, 'deploy/github/workflows/verify-release.yml'), join(destination, '.github/workflows/verify-release.yml'));
 await mkdir(join(destination, 'server/manifest/config'), { recursive: true });
 await writeFile(join(destination, 'server/manifest/config/config.example.yaml'), 'server:\n  address: ":8003"\n  openapiPath: "/api/api.json"\n  swaggerPath: "/api/swagger"\nlogger:\n  level: "info"\n  stdout: true\nrightdata:\n  dataDir: "data"\n  adminUsername: "admin"\n  cookieSecure: true\n');
 await writeFile(join(destination, '.gitignore'), 'node_modules/\ntarget/\ndist/\n__pycache__/\n*.log\n*.exe\n*.exe~\n*.dll\n*.pdb\n*.credential\n*.duckdb*\n.env*\n/server/data/\n/server/bin/\n/server/.staging/\n/server/manifest/config/config.yaml\n/client/src-tauri/gen/\n/test/runtime/\n/test/results/\n/test/build/\n/test/artifacts/\n/test/client/config-results/\n/deploy/github/repository/\n');
