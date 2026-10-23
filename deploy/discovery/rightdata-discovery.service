@@ -1,0 +1,32 @@
+[Unit]
+Description=RightData discovery reference service
+After=network.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+WorkingDirectory=/opt/rightdata/discovery
+ExecStart=/usr/bin/node --jitless /opt/rightdata/discovery/server.mjs
+Environment=DISCOVERY_HOST=127.0.0.1
+Environment=DISCOVERY_PORT=8090
+Environment=DISCOVERY_TRUST_PROXY=1
+EnvironmentFile=-/etc/rightdata/discovery.env
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>经营态势大屏</title>
+  <link rel="stylesheet" href="./screen.css">
+</head>
+<body>
+  <main class="screen-shell">
+    <header class="toolbar">
+      <strong>经营态势</strong>
+      <div id="filters" role="group" aria-label="筛选条件">
+        <label><span>地市</span><input id="city" name="city" autocomplete="off" placeholder="全部"></label>
+        <button id="query" type="button">查询</button>
+      </div>
+      <output id="status" aria-live="polite">等待容器</output>
+    </header>
+
+    <section class="metrics" aria-label="核心指标">
+      <article><span>记录数</span><strong id="row-count">--</strong></article>
+      <article><span>金额合计</span><strong id="amount-total">--</strong></article>
+      <article><span>查询总数</span><strong id="query-total">--</strong></article>
+    </section>
+
+    <section class="table-panel">
+      <p id="table-note" class="table-note" hidden></p>
+      <div class="table-scroll">
+        <table>
+          <thead id="table-head"></thead>
+          <tbody id="table-body"><tr><td class="empty">执行查询后显示数据</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="./screen.js"></script>
+</body>
+</html>

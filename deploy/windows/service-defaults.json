@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "serviceName": "RightDataNetwork",
+  "displayName": "RightData Network Service",
+  "description": "Provides RightData device discovery and peer transport.",
+  "executableName": "rightdata-network-service.exe",
+  "account": "LocalSystem",
+  "serviceType": "ownProcess",
+  "startType": "manual",
+  "launchArguments": [
+    "--service",
+    "--data-dir",
+    "%ProgramData%\\RightData\\network",
+    "--controller-sid",
+    "%ControllerUserSid%"
+  ],
+  "dataDirectory": "%ProgramData%\\RightData\\network",
+  "firewallRuleName": "RightDataNetwork-Program-v1",
+  "firewallDirection": "inbound",
+  "preserveDataOnUninstall": true
+}

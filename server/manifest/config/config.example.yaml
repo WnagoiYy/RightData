@@ -1,0 +1,11 @@
+server:
+  address: ":8003"
+  openapiPath: "/api/api.json"
+  swaggerPath: "/api/swagger"
+logger:
+  level: "info"
+  stdout: true
+rightdata:
+  dataDir: "data"
+  adminUsername: "admin"
+  cookieSecure: true

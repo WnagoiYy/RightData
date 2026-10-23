@@ -1,0 +1,6 @@
+runtime/
+screen-v1/
+build/
+results/*.log
+results/client-ui-artifacts/
+results/client-ui-report/

@@ -1,0 +1,86 @@
+name: Desktop release
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: windows-x64
+          - os: macos-15
+            target: aarch64-apple-darwin
+            name: macos-arm64
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            name: macos-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/client/target
+      MACOSX_DEPLOYMENT_TARGET: '12.0'
+      RIGHTDATA_PUBLIC_UPDATE_URL: ${{ vars.RIGHTDATA_PUBLIC_UPDATE_URL }}
+      RIGHTDATA_GITHUB_REPOSITORY: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - name: Rust target
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            client/network-service -> ../target
+            client/src-tauri -> ../target
+          key: ${{ matrix.target }}
+      - name: Install frontend dependencies
+        working-directory: client
+        run: npm ci
+      - name: Network service unit tests
+        run: cargo test --locked --manifest-path client/network-service/Cargo.toml
+      - name: Frontend build
+        working-directory: client
+        run: npm run build
+      - name: Prepare test bundle resource
+        run: node deploy/github/prepare-test-resource.mjs
+      - name: Native client unit tests
+        run: cargo test --locked --manifest-path client/src-tauri/Cargo.toml --lib
+      - name: Unix service integration
+        if: runner.os == 'macOS'
+        run: python3 test/client/network-service-unix.py
+      - name: Build and sign packages
+        env:
+          RIGHTDATA_UPDATE_SIGNING_KEY: ${{ secrets.RIGHTDATA_UPDATE_SIGNING_KEY }}
+        run: node deploy/github/build-release.mjs ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: test/artifacts/release/*
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: test/artifacts/release
+          merge-multiple: true
+      - name: Publish three verified packages together
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node deploy/github/publish-release.mjs

@@ -1,0 +1,116 @@
+# Windows 安装包
+
+本目录提供 x64 Windows 的 NSIS 打包和 `RightDataNetwork` 服务生命周期脚本。安装包采用每机安装，网络服务以 `LocalSystem` 运行，并将本机控制权限绑定到执行首次安装的交互式 Windows 用户。服务首次注册为手动启动；客户端需要连接且服务尚未运行时，可以按需启动固定的 `RightDataNetwork` 服务。
+
+## 生成安装包
+
+构建机需要 Node.js、已安装依赖的 `client/node_modules`、Rust MSVC 工具链、Windows SDK 和可用的 PowerShell 5.1。首次构建需要取得 Rust 和 npm 依赖。安装包不包含、下载或安装 WebView2，目标电脑需已具备系统 WebView2 Runtime。
+
+在项目根目录执行：
+
+```powershell
+npm.cmd --prefix .\client ci
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass `
+  -File .\deploy\windows\package-windows.ps1
+```
+
+脚本先以 `--locked` 构建独立网络服务，再调用 Tauri 生成 NSIS 安装包。默认目标为 `x86_64-pc-windows-msvc`，网络服务输出到：
+
+```text
+client\target\x86_64-pc-windows-msvc\release\rightdata-network-service.exe
+```
+
+NSIS 安装包通常位于：
+
+```text
+client\target\x86_64-pc-windows-msvc\release\bundle\nsis\
+```
+
+如需单独检查服务构建，可以执行：
+
+```powershell
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass `
+  -File .\deploy\windows\build-network-service.ps1 `
+  -Profile Release `
+  -Target x86_64-pc-windows-msvc
+```
+
+`service-defaults.json` 是安装约定的可读清单，不是安装器直接读取的配置入口。修改它不会改变安装行为；服务注册逻辑以 `service-lifecycle.ps1` 为准。
+
+## 安装行为
+
+安装程序需要管理员权限，并执行以下动作：
+
+1. 升级时停止已有的 `RightDataNetwork` 服务并等待其退出。
+2. 将 `rightdata-network-service.exe` 安装到应用目录。
+3. 首次安装时注册手动启动的 `LocalSystem` 独立进程服务；升级时更新程序路径，但保留用户当前选择的自动或手动启动方式。
+4. 保留服务原有安全描述符，并给控制用户追加“查询状态、启动服务”两项服务权限。不会授予查询或修改服务配置、停止、删除服务及修改安全描述符的权限，`SYSTEM`、Administrators 和其他既有 ACE 保持不变。
+5. 创建入站防火墙规则 `RightDataNetwork-Program-v1`，规则只指向本次安装的服务程序。
+6. 将 `%ProgramData%\RightData\network` 的所有者设为 `SYSTEM`，只授予 `SYSTEM` 和本机管理员完全控制权限，然后为本次安装启动服务。手动启动类型只控制后续 Windows 启动行为，不妨碍安装完成后立即使用。
+
+服务命令行固定包含：
+
+```text
+--service --data-dir "%ProgramData%\RightData\network" --controller-sid <SID>
+```
+
+首次安装从安装程序所在会话的系统 `explorer.exe` 获取控制用户 SID，只接受 `S-1-5-21-…-RID` 形式的账号 SID。该用户可以访问服务的本机控制管道，并在服务未运行时查询状态和请求启动固定服务，但不能查询/修改服务配置、停止或删除服务，也不能写入共享服务数据目录。客户端只在默认生产管道缺失时尝试按需启动；设置了测试用自定义管道时不会操作 SCM。使用会话 0、没有交互式桌面的软件分发账号执行首次安装会因无法确定控制用户而失败；当前安装包没有命令行参数用于覆盖控制 SID。需要绑定指定用户时，应在该用户的交互式会话中启动安装并通过 UAC 提权。
+
+升级会从已有服务的 `ImagePath` 读取并复用控制 SID，重新校正上述最小启动权限，并保留服务原有 DACL 中的其他 ACE。重新运行升级安装不会把控制权迁移给另一个用户。需要更换控制用户时，先正常卸载服务，再从新用户的交互式会话重新安装；保留的设备数据可继续使用。
+
+用户在客户端关闭“开机启动”后，服务保持手动启动。Windows 重启后服务不会自行运行；该用户下次启动客户端并需要网络连接时，客户端可以用最小服务权限按需启动它。按需启动不会把启动类型改回自动。
+
+首次成功登记后，只有 `%ProgramData%\RightData\network\startup.json` 尚不存在、即用户从未明确选择开机启动偏好时，服务才会把启动类型从手动改为自动。用户在客户端选择开启或关闭都会持久化为显式偏好；显式 `false` 会跨服务进程和 Windows 重启保留，后续登记不会重新开启。修改启动类型只允许由已经作为 `RightDataNetwork` SCM 服务运行的进程执行；独立命令行或调试进程会拒绝该操作。桌面客户端只能在默认管道缺失且操作为状态查询或显式启动时调用 SCM `StartService`，不会安装服务、修改启动类型、停止或删除服务；自定义测试管道不会触发 SCM。
+
+## 预置连接地址
+
+默认业务地址是 `http://127.0.0.1:8003`，默认不配置发现地址。通常由控制用户在客户端“连接设置”中填写；设置会同时写入客户端状态和网络服务配置。
+
+批量部署可以在首次安装前预置 `%ProgramData%\RightData\network\network.json`。安装程序会保留该文件并收紧目录权限。示例：
+
+```json
+{
+  "serverUrl": "https://rightdata.example.internal",
+  "discoveryUrl": "https://discovery.example.com",
+  "boundInstanceId": null,
+  "allowPublicRelay": false,
+  "enabled": true
+}
+```
+
+业务地址和发现地址只能包含协议、主机及端口，不能包含账号、密码、业务路径、查询参数或片段。公网发现地址必须使用 HTTPS；只有本机回环发现地址允许 HTTP。首次探测成功后应用会保存服务实例标识，因此预置文件中的 `boundInstanceId` 应保持为 `null`。
+
+服务已经安装时，优先通过客户端连接设置修改地址。部署工具直接更新 `network.json` 时必须以管理员身份先停止 `RightDataNetwork`，原子替换完整 JSON，再启动服务；不要在服务运行时分段写入文件。
+
+## WebView2 运行时
+
+默认 `webviewInstallMode.type = "skip"`，安装包不包含、下载或安装 WebView2 Runtime。目标电脑需已安装 WebView2；macOS 包使用系统 WebKit。旧版独立覆盖文件 `tauri-no-webview2.json` 与当前默认行为一致。
+
+
+## 升级、身份与配置保留
+
+`%ProgramData%\RightData\network` 不在程序安装目录内，升级和卸载均不会删除。这里包含：
+
+- `device.key`：iroh 设备身份；
+- `network.json`：业务地址、发现地址、已绑定的服务实例及网络开关；
+- `network.jsonl`：本机网络日志。
+
+因此覆盖升级会保留设备身份和连接设置。升级流程会先停止服务，再替换程序并启动服务，避免在运行中覆盖可执行文件。服务注册、控制 SID、数据目录 ACL 和固定名称的防火墙规则会在安装后重新校正。
+
+客户端自己的连接设置、加密会话和待补报事件存放在 Tauri 的当前用户应用数据目录中，通常为 `%APPDATA%\com.rightdata.client`。Windows 服务生命周期脚本不会删除这些用户数据。
+
+## 卸载与彻底清理
+
+卸载器只停止并删除 `RightDataNetwork` 服务，以及删除 `RightDataNetwork-Program-v1` 防火墙规则。它有意保留 `%ProgramData%\RightData\network`，便于重装或升级后延续设备身份和连接配置，也不会主动删除各用户的 Tauri 应用数据。
+
+确需重置设备身份或移交电脑时，应先完成卸载，再由管理员确认路径后删除 `%ProgramData%\RightData\network`。如需清除某个用户的登录恢复信息和连接设置，也应由该用户退出客户端后删除其实际的 Tauri 应用数据目录。删除这些目录会生成新的设备身份并要求重新配置、重新登录。
+
+## 当前验证范围
+
+目前已完成脚本静态约定测试、PowerShell 语法检查、NSIS hooks 编译检查、Windows 目标的网络服务编译和客户端 UI 自动化。尚未在干净的 Windows 10/11 机器上实际执行完整的 NSIS 首次安装、覆盖升级、卸载和重装，也未验证企业软件分发、断网 WebView2 安装、安装失败回滚及重启后的服务状态。发布前必须补齐这些真实安装验证，构建成功不能替代安装验收。
+
+静态安装约定测试：
+
+```powershell
+node --test .\test\client\service-install-contract.test.mjs
+```

@@ -1,0 +1,13 @@
+{
+  "bundle": {
+    "targets": ["app", "dmg"],
+    "resources": {
+      "../target/x86_64-pc-windows-msvc/release/rightdata-network-service.exe": null,
+      "../target/macos-resources/rightdata-network-service": "rightdata-network-service"
+    },
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "signingIdentity": "-"
+    }
+  }
+}

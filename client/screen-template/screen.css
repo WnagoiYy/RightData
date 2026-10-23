@@ -1,0 +1,74 @@
+:root {
+  color: #edf4ff;
+  background: #07111f;
+  font-family: Inter, "Microsoft YaHei", system-ui, sans-serif;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+
+body { min-width: 320px; min-height: 100vh; margin: 0; background: radial-gradient(circle at 50% -20%, #17345d 0, #07111f 46%); }
+
+button,
+input { font: inherit; }
+
+.screen-shell { display: grid; min-height: 100vh; padding: 18px; gap: 14px; grid-template-rows: auto auto 1fr; }
+
+.toolbar { display: flex; align-items: center; min-height: 46px; gap: 18px; }
+
+.toolbar > strong { margin-right: auto; font-size: clamp(18px, 2vw, 28px); letter-spacing: .08em; }
+
+.toolbar #filters { display: flex; align-items: end; gap: 8px; }
+
+.toolbar label { display: grid; gap: 3px; }
+
+.toolbar label span,
+.toolbar output { color: #91a9c7; font-size: 11px; }
+
+.toolbar input,
+.toolbar button { height: 32px; color: #edf4ff; background: #0e2037; border: 1px solid #29476a; border-radius: 4px; }
+
+.toolbar input { width: 140px; padding: 0 9px; }
+
+.toolbar button { padding: 0 15px; border-color: #2d74d8; background: #195cb8; cursor: pointer; }
+
+.metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+
+.metrics article,
+.table-panel { background: rgba(10, 28, 50, .86); border: 1px solid rgba(97, 148, 205, .24); border-radius: 7px; }
+
+.metrics article { display: grid; min-width: 0; min-height: 96px; padding: 15px; align-content: center; gap: 6px; }
+
+.metrics span { color: #91a9c7; font-size: 12px; }
+
+.metrics strong { min-width: 0; overflow-wrap: anywhere; color: #67b8ff; font-size: clamp(24px, 3.4vw, 42px); font-variant-numeric: tabular-nums; }
+
+.table-panel { display: flex; min-width: 0; min-height: 260px; padding: 10px; overflow: hidden; flex-direction: column; }
+
+.table-note { margin: 0 0 8px; color: #d7aa5b; font-size: 11px; }
+
+.table-scroll { min-height: 0; overflow: auto; flex: 1; }
+
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+
+th,
+td { padding: 10px; border-bottom: 1px solid rgba(97, 148, 205, .17); text-align: left; white-space: nowrap; }
+
+th { position: sticky; top: 0; color: #9fc0e8; background: #10243e; font-weight: 600; }
+
+td { color: #dbe9fa; }
+
+.empty { height: 160px; color: #7890ad; text-align: center; }
+
+@media (max-width: 680px) {
+  .screen-shell { padding: 10px; }
+  .toolbar { align-items: stretch; flex-wrap: wrap; }
+  .toolbar > strong { width: 100%; }
+  .toolbar output { align-self: center; }
+  .metrics { grid-template-columns: 1fr; }
+  .metrics article { min-height: 76px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; }
+}
