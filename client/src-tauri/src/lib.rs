@@ -130,7 +130,6 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             network_service::initialize_macos(&app.path().resource_dir()?)?;
             let state = AppState::new(root.clone())?;
-            tauri::async_runtime::block_on(state.initialize_network_service())?;
             app.manage(state);
             let event_queue = client_events::ClientEventQueue::open(root.clone())?;
             let event_queue_error = event_queue.initialization_error();
@@ -139,6 +138,13 @@ pub fn run() {
             app.manage(ScreenManager::new(root.join("screens")));
             app.manage(PreviewStore::default());
             install_tray(app)?;
+            let initialization_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let state = initialization_handle.state::<AppState>();
+                if let Err(error) = state.initialize_network_service().await {
+                    state.mark_disconnected(&error).await;
+                }
+            });
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if let Some(error) = event_queue_error {

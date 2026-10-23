@@ -66,14 +66,14 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass `
 
 ## 预置连接地址
 
-默认业务地址是 `http://127.0.0.1:8003`，默认不配置发现地址。通常由控制用户在客户端“连接设置”中填写；设置会同时写入客户端状态和网络服务配置。
+正式构建的默认业务地址是 `http://192.168.3.123:8003`，开发构建使用 `http://127.0.0.1:8003`。v0.1.7 默认发现地址为 `https://39.106.128.14`，首次升级会补齐旧版空发现地址，保留自定义地址；之后仍可手动清空。控制用户可在客户端“连接设置”中修改，设置同时写入客户端状态和网络服务配置。连接设置不再随启动或连接失败自动弹出。
 
 批量部署可以在首次安装前预置 `%ProgramData%\RightData\network\network.json`。安装程序会保留该文件并收紧目录权限。示例：
 
 ```json
 {
   "serverUrl": "https://rightdata.example.internal",
-  "discoveryUrl": "https://discovery.example.com",
+  "discoveryUrl": "https://39.106.128.14",
   "boundInstanceId": null,
   "allowPublicRelay": false,
   "enabled": true

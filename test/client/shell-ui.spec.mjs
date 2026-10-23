@@ -30,11 +30,45 @@ test('connection settings available before login; public business relay is opt-i
   await page.goto('/');
   await page.getByRole('button', { name: '连接设置', exact: true }).click();
   await expect(page.getByRole('checkbox', { name: '允许公网业务中继' })).not.toBeChecked();
+  await expect(page.getByLabel('节点发现地址')).toHaveValue('https://39.106.128.14');
   await page.getByLabel('服务端地址').fill('http://127.0.0.1:18003');
   await page.getByRole('button', { name: '保存并连接' }).click();
   await expect(page.getByRole('dialog')).not.toBeVisible();
   expect(control.settings.serverUrl).toBe('http://127.0.0.1:18003');
   expect(control.settings.allowPublicRelay).toBe(false);
+});
+
+test('logged-out startup shows login while connection warms and reuses that probe', async ({ page }) => {
+  let releaseProbe;
+  const probeGate = new Promise(resolve => { releaseProbe = resolve; });
+  const control = await installNativeMock(page, { authenticated: false });
+  control.probeGate = probeGate;
+  await page.goto('/');
+
+  await expect(page.getByRole('heading', { name: '用户登录' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '连接设置' })).toHaveCount(0);
+  expect(control.requests.filter(request => request.command === 'transport_probe')).toHaveLength(1);
+
+  await page.getByLabel('账号', { exact: true }).fill('admin');
+  await page.getByLabel('密码', { exact: true }).fill('correct-test-password');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page.getByRole('button', { name: '登录', exact: true })).toHaveClass(/ant-btn-loading/);
+  expect(control.requests.filter(request => request.command === 'auth_login')).toHaveLength(0);
+
+  releaseProbe();
+  await expect(page.getByText('我的报表与看板', { exact: true })).toBeVisible();
+  expect(control.requests.filter(request => request.command === 'transport_probe')).toHaveLength(1);
+  expect(control.requests.filter(request => request.command === 'auth_login')).toHaveLength(1);
+});
+
+test('connection failure stays on login without opening settings', async ({ page }) => {
+  const control = await installNativeMock(page, { authenticated: false });
+  control.probeError = { code: 'network_error', message: '无法连接服务' };
+  await page.goto('/');
+
+  await expect(page.getByRole('heading', { name: '用户登录' })).toBeVisible();
+  await expect(page.getByText('无法连接服务')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '连接设置' })).toHaveCount(0);
 });
 
 test('business table loads exact BIGINT values through the native bridge', async ({ page }) => {

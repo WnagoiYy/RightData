@@ -2,6 +2,20 @@
 
 This stateless Node.js service publishes short-lived Iroh endpoint records. It stores no business credentials, access tokens, or backend URLs. State is held in memory because clients renew every 20 seconds and each effective lease lasts at most 60 seconds.
 
+## 当前部署
+
+正式发现地址为 `https://39.106.128.14`。v0.1.7 客户端默认使用该地址；首次升级会为旧版空发现地址填入默认值，已有自定义地址保留，之后仍可手动清空。
+
+服务部署在该主机的 `/opt/rightdata/discovery`，由 `rightdata-discovery.service` 管理单个只读、非 root Node 容器，监听 `127.0.0.1:18090`。运行镜像固定为 `node@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d`（Node 22.23.4），限额为每 IP 每分钟 600 次、每个 JSON 请求 16 KiB。
+
+现有 OpenResty 443 站点通过 `nginx-locations.inc` 只转发 `/v1/instances/` 和 `/rightdata-discovery/healthz`，覆盖 X-Forwarded-For 为真实来源 IP。使用既有 Let's Encrypt IP 证书、`snap.certbot.renew.timer` 和续期重载脚本，不新增公网监听端口。内部签名路径保持原样。
+
+部署时上传 `server.mjs`、`rightdata-discovery-container.service`、`nginx-locations.inc` 和 `install-container.sh` 到 `/opt/rightdata/discovery/`，确认固定镜像已拉取，再运行 `bash /opt/rightdata/discovery/install-container.sh`。脚本会保存部署前站点配置、验证 nginx 配置后重载，并校验公网健康响应确为 JSON。
+
+验证命令：`node test/client/discovery-live.mjs https://39.106.128.14`。它使用临时身份和随机实例空间检查可信 TLS、注册、查询、续租、重放拒绝、无效签名拒绝及注销，并把结果保存到 `test/results/discovery-live.json`。临时登记在结束时删除。
+
+发现服务不等同于业务中继。当前生产业务地址为 `http://192.168.3.123:8003`，支持内网直连；release 版本的 peer 转发要求业务后端使用受信任的 HTTPS，不能通过关闭证书验证来绕过。登记签名证明节点私钥所有权，不代表实例成员授权；公开实例下的注册污染与容量滥用仍依赖限流和容量上限控制。
+
 ## Protocol
 
 `endpointId` is the lowercase 64-character hex encoding of the raw 32-byte Ed25519 public key. `expiresAt` is an integer Unix timestamp in milliseconds. Requests must satisfy `now < expiresAt <= now + 90000`; the service caps the stored lease at `now + 60000`.

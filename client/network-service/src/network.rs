@@ -40,6 +40,8 @@ const PEER_BACKOFF_BASE_MS: u64 = 250;
 const PEER_BACKOFF_MAX_MS: u64 = 8_000;
 const PEER_EWMA_NEW_SAMPLE_WEIGHT: f64 = 0.25;
 const STARTUP_PREFERENCE_VERSION: u8 = 1;
+const HEALTH_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(20);
+const ON_DEMAND_HEALTH_MAX_AGE: Duration = Duration::from_secs(25);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -90,7 +92,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             server_url: crate::build_defaults::SERVER_URL.into(),
-            discovery_url: None,
+            discovery_url: Some(crate::build_defaults::DISCOVERY_URL.into()),
             bound_instance_id: None,
             allow_public_relay: false,
             enabled: true,
@@ -696,12 +698,10 @@ impl Network {
         let config = self.config.read().await.clone();
         ensure!(&config == expected, "网络设置已变更，请重试请求");
         ensure!(config.enabled, "本机网络服务已暂停");
-        let stale = self
-            .health
-            .read()
-            .await
-            .checked
-            .is_none_or(|instant| instant.elapsed() > Duration::from_secs(10));
+        let stale = {
+            let health = self.health.read().await;
+            should_refresh_health_on_demand(&health)
+        };
         if stale {
             let _ = self.refresh_health().await;
         }
@@ -1072,10 +1072,12 @@ pub async fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 pub async fn maintain(service: Arc<Network>) {
-    let mut interval = tokio::time::interval(Duration::from_secs(20));
+    let mut interval = tokio::time::interval(HEALTH_MAINTENANCE_INTERVAL);
     loop {
         interval.tick().await;
-        let _guard = service.transition.write().await;
+        // Keep configuration stable while maintaining health, but allow proxy
+        // connections to use the last known route during the network probe.
+        let _guard = service.transition.read().await;
         let mut config = service.config.read().await.clone();
         if !config.enabled {
             continue;
@@ -1126,9 +1128,54 @@ pub async fn maintain(service: Arc<Network>) {
     }
 }
 
+fn should_refresh_health_on_demand(health: &Health) -> bool {
+    match (health.ready, health.checked) {
+        (_, None) => true,
+        (true, Some(checked)) => checked.elapsed() > ON_DEMAND_HEALTH_MAX_AGE,
+        // Maintenance owns recovery after a completed failure so foreground
+        // requests return the known route error without another network wait.
+        (false, Some(_)) => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn first_run_defaults_include_public_discovery() {
+        let config = Config::default();
+        assert_eq!(
+            config.discovery_url.as_deref(),
+            Some(crate::build_defaults::DISCOVERY_URL)
+        );
+    }
+
+    #[test]
+    fn on_demand_refresh_does_not_race_normal_maintenance() {
+        assert!(should_refresh_health_on_demand(&Health::default()));
+        let healthy = Health {
+            ready: true,
+            checked: Some(Instant::now()),
+            ..Health::default()
+        };
+        assert!(!should_refresh_health_on_demand(&healthy));
+        assert!(HEALTH_MAINTENANCE_INTERVAL < ON_DEMAND_HEALTH_MAX_AGE);
+        assert!(should_refresh_health_on_demand(&Health {
+            ready: true,
+            checked: Some(
+                Instant::now() - ON_DEMAND_HEALTH_MAX_AGE - Duration::from_millis(1)
+            ),
+            ..Health::default()
+        }));
+        assert!(!should_refresh_health_on_demand(&Health {
+            ready: false,
+            checked: Some(Instant::now()),
+            error: Some("unreachable".into()),
+            ..Health::default()
+        }));
+    }
+
     #[test]
     fn rejects_credential_and_path_targets() {
         for value in [

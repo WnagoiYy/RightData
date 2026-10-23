@@ -140,6 +140,8 @@ jobs:
       - name: Frontend build
         working-directory: client
         run: npm run build
+      - name: Discovery protocol tests
+        run: node --test test/client/discovery-service.test.mjs
       - name: Verify development and production defaults
         shell: bash
         run: |
@@ -168,6 +170,21 @@ jobs:
           $packages = @(Get-ChildItem test/artifacts/release/RightData-*-windows-x64.exe)
           if ($packages.Count -ne 1) { throw 'Expected exactly one installer' }
           ./test/client/installer-integration.ps1 -Package $packages[0].FullName
+      - name: Real macOS package startup
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          version=$(node -p 'require("./client/package.json").version')
+          if [[ '${{ matrix.target }}' == aarch64-apple-darwin ]]; then
+            package_arch=arm64
+            binary_arch=arm64
+          else
+            package_arch=x64
+            binary_arch=x86_64
+          fi
+          python3 test/client/installer-macos.py \
+            --package "test/artifacts/release/RightData-$version-macos-$package_arch.dmg" \
+            --expected-version "$version" --expected-arch "$binary_arch"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}

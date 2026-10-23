@@ -46,7 +46,7 @@ export async function installNativeMock(page, options = {}) {
   control.previewOpens = [];
   control.screenTokenSequence = 0;
   control.files = [{ id: 'guide', name: '权益口径说明.txt', size: 3200, ownerId: user.id, mediaType: 'text/plain', sha256: 'a'.repeat(64), updatedAt: '2026-10-23T01:00:00Z' }];
-  control.settings = { serverUrl: 'http://127.0.0.1:8003', discoveryUrl: '', allowPublicRelay: false };
+  control.settings = { serverUrl: 'http://127.0.0.1:8003', discoveryUrl: 'https://39.106.128.14', allowPublicRelay: false };
   const state = () => ({ settings: control.settings, connection: { mode: 'direct', instanceId: 'test-instance', apiVersion: '1', ready: true }, session: { authenticated: control.authenticated, user: control.authenticated ? user : undefined, remember: true } });
   const result = data => ({ status: 200, headers: {}, data: { code: 'ok', message: '', data, requestId: 'test-request' } });
   const query = () => ({ fields, rows: control.rows, total: control.queryTotal ?? control.rows.length, truncated: control.queryTruncated === true });
@@ -64,7 +64,11 @@ export async function installNativeMock(page, options = {}) {
       if (command === 'network_service_get_state') return { ok: true, value: { running: true, enabled: true, autoStart: false, deviceId: 'test-device', mode: 'direct', ready: true } };
       if (command === 'network_service_set_enabled') return { ok: true, value: { running: true, enabled: input.enabled, autoStart: false, deviceId: 'test-device', mode: input.enabled ? 'direct' : 'disconnected', ready: input.enabled } };
       if (command === 'network_service_set_autostart') return { ok: true, value: { running: true, enabled: true, autoStart: input.autoStart, deviceId: 'test-device', mode: 'direct', ready: true } };
-      if (command === 'transport_probe') return { ok: true, value: { service: 'RightData', instanceId: 'test-instance', apiVersion: '1', ready: true, mode: 'direct', latencyMs: 4 } };
+      if (command === 'transport_probe') {
+        if (control.probeGate) await control.probeGate;
+        if (control.probeError) throw control.probeError;
+        return { ok: true, value: { service: 'RightData', instanceId: 'test-instance', apiVersion: '1', ready: true, mode: 'direct', latencyMs: 4 } };
+      }
       if (command === 'transport_configure') { control.settings = input; return { ok: true, value: state() }; }
       if (command === 'auth_restore') return { ok: true, value: { authenticated: control.authenticated, user: control.authenticated ? user : undefined } };
       if (command === 'auth_login') {

@@ -60,7 +60,7 @@ async function confirmPublish(page, row, dispatch = false) {
   const trigger = row.getByRole('button', { name: '发布' });
   if (dispatch) await trigger.dispatchEvent('click');
   else await trigger.click();
-  await page.locator('.ant-popconfirm').getByRole('button', { name: '发布', exact: true }).click();
+  await page.locator('.ant-popconfirm').last().getByRole('button', { name: '发布', exact: true }).click();
 }
 
 test('大屏版本管理保留不可变版本、冲突预览和回退语义', async ({ page }) => {

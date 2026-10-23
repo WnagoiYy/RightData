@@ -8,8 +8,6 @@ import { listen } from '@tauri-apps/api/event';
 import { api, errorMessage, hasPermission, native, type TransportState, type User } from './lib/api';
 import { allowedPages, navGroups, pages, type DynamicMenu, type PageKey } from './lib/navigation';
 import { Login } from './components/Login';
-import { ConnectionDialog } from './components/ConnectionDialog';
-import { UpdateDialog } from './components/UpdateDialog';
 import { Failure } from './components/Feedback';
 import { Overview } from './features/admin/Overview';
 import logo from './assets/logo.svg';
@@ -27,6 +25,8 @@ const FilesWorkspace = lazy(() => import('./features/admin/FilesWorkspace').then
 const LogsWorkspace = lazy(() => import('./features/admin/LogsWorkspace').then(module => ({ default: module.LogsWorkspace })));
 const DocsWorkspace = lazy(() => import('./features/admin/DocsWorkspace').then(module => ({ default: module.DocsWorkspace })));
 const PreviewWindow = lazy(() => import('./features/admin/PreviewWindow').then(module => ({ default: module.PreviewWindow })));
+const ConnectionDialog = lazy(() => import('./components/ConnectionDialog').then(module => ({ default: module.ConnectionDialog })));
+const UpdateDialog = lazy(() => import('./components/UpdateDialog').then(module => ({ default: module.UpdateDialog })));
 
 const theme: ThemeConfig = {
   token: { colorPrimary: '#0066ff', colorText: '#354b7d', colorTextHeading: '#142052', colorTextSecondary: '#7c8db1', colorBgLayout: '#f4f8ff', colorBorder: '#e1eaf9', fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif', fontSize: 14, borderRadius: 6, controlHeight: 34, colorSuccess: '#169447' },
@@ -58,7 +58,8 @@ function Application() {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [passwordForm] = Form.useForm();
-  const initialize = useRef<Promise<{ state: TransportState; user?: User }> | undefined>(undefined);
+  const initialize = useRef<Promise<{ state: TransportState; user?: User; warmConnection?: boolean }> | undefined>(undefined);
+  const warmConnection = useRef<Promise<TransportState> | undefined>(undefined);
   const contextRequest = useRef(0);
   const userRef = useRef(user); userRef.current = user;
   const navigate = useCallback((next: string) => { window.location.hash = encodeURIComponent(next); setRoute(next); setDrawer(false); }, []);
@@ -82,13 +83,30 @@ function Application() {
     if (!initialize.current) initialize.current = (async () => {
       const initial = await native<TransportState>('transport_get_state');
       if (new URLSearchParams(window.location.search).has('preview')) return { state: initial, user: initial.session.user };
-      await native('transport_probe');
+      if (!initial.session.authenticated) return { state: initial, warmConnection: true };
       const session = await native<{ authenticated: boolean; user?: User }>('auth_restore');
       const current = await native<TransportState>('transport_get_state');
       return { state: current, user: session.authenticated ? session.user : undefined };
     })();
-    initialize.current.then(result => { if (alive) { setState(result.state); setUser(result.user); } }).catch(cause => { if (alive) { setBootError(cause); setSettingsOpen(true); void native<TransportState>('transport_get_state').then(value => { if (alive) setState(value); }).catch(() => {}); } }).finally(() => { if (alive) setBooting(false); });
+    initialize.current.then(result => {
+      if (!alive) return;
+      setState(result.state); setUser(result.user); setBooting(false);
+      if (result.warmConnection && !warmConnection.current) {
+        const pending = native('transport_probe').then(() => native<TransportState>('transport_get_state'));
+        warmConnection.current = pending;
+        void pending.then(value => { if (alive) { setState(value); setBootError(undefined); } }).catch(cause => {
+          if (warmConnection.current === pending) warmConnection.current = undefined;
+          if (alive) { setBootError(cause); void native<TransportState>('transport_get_state').then(value => { if (alive) setState(value); }).catch(() => {}); }
+        });
+      }
+    }).catch(cause => { if (alive) { setBootError(cause); setBooting(false); void native<TransportState>('transport_get_state').then(value => { if (alive) setState(value); }).catch(() => {}); } });
     return () => { alive = false; };
+  }, []);
+  const beforeLogin = useCallback(async () => {
+    const pending = warmConnection.current;
+    if (!pending) return;
+    try { await pending; }
+    finally { if (warmConnection.current === pending) warmConnection.current = undefined; }
   }, []);
   const refreshContext = useCallback(async () => {
     const before = userRef.current;
@@ -96,8 +114,10 @@ function Application() {
     const request = ++contextRequest.current;
     try {
       const current = await api.request<User>('/api/v1/auth/me');
-      const transportState = await native<TransportState>('transport_get_state');
-      const nav = hasPermission(current.permissions, 'resources.read') ? await api.request<{ items: DynamicMenu[] }>('/api/v1/menus') : { items: [] };
+      const [transportState, nav] = await Promise.all([
+        native<TransportState>('transport_get_state'),
+        hasPermission(current.permissions, 'resources.read') ? api.request<{ items: DynamicMenu[] }>('/api/v1/menus') : Promise.resolve({ items: [] }),
+      ]);
       if (request !== contextRequest.current || userRef.current?.id !== before.id) return;
       setState(transportState);
       if (JSON.stringify(current.permissions) !== JSON.stringify(before.permissions) || current.authzRevision !== before.authzRevision) { setRevision(value => value + 1); userRef.current = current; setUser(current); }
@@ -167,7 +187,7 @@ function Application() {
   }
   const menu = <Menu mode="inline" items={menuItems} selectedKeys={[route]} defaultOpenKeys={['data-management', 'config']} onClick={({ key }) => navigate(key)} className="side-menu" />;
   return <>
-    {booting ? <div className="app-loading"><Spin size="large" /><span>正在连接服务…</span></div> : !user ? <Login onLogin={current => void loggedIn(current).catch(cause => message.error(errorMessage(cause)))} onSettings={() => setSettingsOpen(true)} initialError={bootError} /> : previewId ? <main className="preview-main"><Suspense fallback={<Spin />}><PageBoundary key={`preview:${revision}`}>{contextError ? <Failure error={contextError} retry={() => void refreshContext()} /> : content}</PageBoundary></Suspense></main> : <Layout className="app-shell">
+    {booting ? <div className="app-loading"><Spin size="large" /><span>正在恢复登录…</span></div> : !user ? <Login onLogin={current => void loggedIn(current).catch(cause => message.error(errorMessage(cause)))} onSettings={() => setSettingsOpen(true)} initialError={bootError} beforeLogin={beforeLogin} /> : previewId ? <main className="preview-main"><Suspense fallback={<Spin />}><PageBoundary key={`preview:${revision}`}>{contextError ? <Failure error={contextError} retry={() => void refreshContext()} /> : content}</PageBoundary></Suspense></main> : <Layout className="app-shell">
       {!mobile && <Layout.Sider theme="light" width={212} collapsedWidth={64} collapsed={collapsed} className="app-sider"><div className="brand"><img src={logo} alt="贵州权益数据平台" />{!collapsed && <span>贵州权益数据平台</span>}</div>{menu}<Button className="sider-collapse" type="text" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setCollapsed(value => !value)}>{collapsed ? null : '收起菜单'}</Button></Layout.Sider>}
       <Drawer title="贵州权益数据平台" placement="left" size={260} open={drawer} onClose={() => setDrawer(false)} styles={{ body: { padding: 0 } }}>{menu}</Drawer>
       <Layout className="main-layout"><Layout.Header className="app-header"><Space>{mobile && <Button aria-label="打开菜单" type="text" icon={<MenuUnfoldOutlined />} onClick={() => setDrawer(true)} />}<Breadcrumb items={[{ title: '工作台' }, { title: pageTitle }]} /></Space><Space size={14}>
@@ -176,8 +196,8 @@ function Application() {
       </Space></Layout.Header>
       <Layout.Content className="app-content"><Failure error={contextError} retry={() => void refreshContext()} />{!contextError && <PageBoundary key={`${route}:${revision}`}><Suspense fallback={<div className="page-loading"><Spin /></div>}>{content}</Suspense></PageBoundary>}</Layout.Content></Layout>
     </Layout>}
-    <ConnectionDialog open={settingsOpen} state={state} onClose={() => setSettingsOpen(false)} onChange={connectionChanged} />
-    <UpdateDialog open={updatesOpen} onClose={() => setUpdatesOpen(false)} />
+    {settingsOpen && <Suspense fallback={null}><ConnectionDialog open state={state} onClose={() => setSettingsOpen(false)} onChange={connectionChanged} /></Suspense>}
+    {updatesOpen && <Suspense fallback={null}><UpdateDialog open onClose={() => setUpdatesOpen(false)} /></Suspense>}
     <Modal title="修改密码" open={passwordOpen} onCancel={() => setPasswordOpen(false)} onOk={() => void changePassword()} confirmLoading={passwordBusy} destroyOnHidden><Form form={passwordForm} layout="vertical"><Form.Item name="oldPassword" label="当前密码" rules={[{ required: true }]}><Input.Password autoComplete="current-password" /></Form.Item><Form.Item name="newPassword" label="新密码" rules={[{ required: true }, { min: 12, message: '至少 12 个字符' }]}><Input.Password autoComplete="new-password" /></Form.Item><Form.Item name="confirmPassword" label="确认新密码" dependencies={['newPassword']} rules={[{ required: true }, ({ getFieldValue }) => ({ validator: (_, value) => !value || value === getFieldValue('newPassword') ? Promise.resolve() : Promise.reject(new Error('两次密码不一致')) })]}><Input.Password autoComplete="new-password" /></Form.Item></Form></Modal>
   </>;
 }

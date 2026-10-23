@@ -1,0 +1,17 @@
+[Unit]
+Description=RightData node discovery
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/opt/rightdata/discovery/image.env
+ExecStart=/usr/bin/docker run --rm --name rightdata-discovery --network host --user 1000:1000 --read-only --cap-drop ALL --security-opt no-new-privileges --memory 128m --pids-limit 64 --log-opt max-size=10m --log-opt max-file=3 --mount type=bind,source=/opt/rightdata/discovery/server.mjs,target=/app/server.mjs,readonly --env DISCOVERY_HOST=127.0.0.1 --env DISCOVERY_PORT=18090 --env DISCOVERY_TRUST_PROXY=1 --env DISCOVERY_RATE_LIMIT_PER_MINUTE=600 ${DISCOVERY_IMAGE} node /app/server.mjs
+ExecStop=/usr/bin/docker stop --time 10 rightdata-discovery
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

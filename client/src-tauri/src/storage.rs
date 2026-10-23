@@ -12,6 +12,32 @@ use zeroize::{Zeroize, Zeroizing};
 const SESSION_MAGIC: &[u8; 8] = b"RDSESS01";
 const SESSION_AAD: &[u8] = b"rightdata/client-session/v1";
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct SettingsMigrations {
+    discovery_default_v1: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SettingsDocument {
+    #[serde(flatten)]
+    settings: ConnectionSettings,
+    #[serde(default)]
+    migrations: SettingsMigrations,
+}
+
+impl SettingsDocument {
+    fn current(settings: ConnectionSettings) -> Self {
+        Self {
+            settings,
+            migrations: SettingsMigrations {
+                discovery_default_v1: true,
+            },
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StoredSession {
@@ -46,8 +72,25 @@ impl Storage {
         if !path.exists() {
             return Ok(ConnectionSettings::default());
         }
-        let bytes = fs::read(path).map_err(|_| TransportError::storage("无法读取连接设置"))?;
-        serde_json::from_slice(&bytes).map_err(|_| TransportError::storage("连接设置已损坏"))
+        let bytes = fs::read(&path).map_err(|_| TransportError::storage("无法读取连接设置"))?;
+        let mut document: SettingsDocument = serde_json::from_slice(&bytes)
+            .map_err(|_| TransportError::storage("连接设置已损坏"))?;
+        if !document.migrations.discovery_default_v1 {
+            if document
+                .settings
+                .discovery_url
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+            {
+                document.settings.discovery_url =
+                    Some(crate::build_defaults::DISCOVERY_URL.to_string());
+            }
+            document.migrations.discovery_default_v1 = true;
+            let migrated = serde_json::to_vec_pretty(&document)
+                .map_err(|_| TransportError::storage("无法编码连接设置"))?;
+            self.atomic_write(&path, &migrated)?;
+        }
+        Ok(document.settings)
     }
 
     pub fn has_settings(&self) -> bool {
@@ -55,7 +98,7 @@ impl Storage {
     }
 
     pub fn save_settings(&self, settings: &ConnectionSettings) -> Result<()> {
-        let bytes = serde_json::to_vec_pretty(settings)
+        let bytes = serde_json::to_vec_pretty(&SettingsDocument::current(settings.clone()))
             .map_err(|_| TransportError::storage("无法编码连接设置"))?;
         self.atomic_write(&self.root.join("connection.json"), &bytes)
     }
@@ -185,11 +228,72 @@ impl Storage {
 mod tests {
     use super::*;
 
+    fn test_root(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../test/runtime/rust-tests")
+            .join(format!("{name}-{}", uuid::Uuid::new_v4()))
+    }
+
+    #[test]
+    fn legacy_empty_discovery_is_migrated_once_and_explicit_clear_is_preserved() {
+        let root = test_root("settings-discovery-migration");
+        let storage = Storage::new(root.clone()).unwrap();
+        fs::write(
+            root.join("connection.json"),
+            br#"{
+  "serverUrl": "https://service.example",
+  "discoveryUrl": null,
+  "allowPublicRelay": false,
+  "boundInstanceId": "instance-a"
+}"#,
+        )
+        .unwrap();
+
+        let migrated = storage.load_settings().unwrap();
+        assert_eq!(
+            migrated.discovery_url.as_deref(),
+            Some(crate::build_defaults::DISCOVERY_URL)
+        );
+        let document: Value =
+            serde_json::from_slice(&fs::read(root.join("connection.json")).unwrap()).unwrap();
+        assert_eq!(
+            document.pointer("/migrations/discoveryDefaultV1"),
+            Some(&Value::Bool(true))
+        );
+
+        let mut cleared = migrated;
+        cleared.discovery_url = None;
+        storage.save_settings(&cleared).unwrap();
+        assert_eq!(storage.load_settings().unwrap().discovery_url, None);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn legacy_custom_discovery_is_not_overwritten() {
+        let root = test_root("settings-custom-discovery");
+        let storage = Storage::new(root.clone()).unwrap();
+        fs::write(
+            root.join("connection.json"),
+            br#"{
+  "serverUrl": "https://service.example",
+  "discoveryUrl": "https://discovery.example",
+  "allowPublicRelay": true,
+  "boundInstanceId": null
+}"#,
+        )
+        .unwrap();
+
+        let settings = storage.load_settings().unwrap();
+        assert_eq!(
+            settings.discovery_url.as_deref(),
+            Some("https://discovery.example")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn encrypted_session_round_trip_does_not_store_tokens_as_plaintext() {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../test/runtime/rust-tests")
-            .join(format!("storage-{}", uuid::Uuid::new_v4()));
+        let root = test_root("storage");
         let storage = Storage::new(root.clone()).unwrap();
         let session = StoredSession {
             instance_id: "instance-a".into(),

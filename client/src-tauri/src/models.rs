@@ -15,7 +15,7 @@ impl Default for ConnectionSettings {
     fn default() -> Self {
         Self {
             server_url: crate::build_defaults::SERVER_URL.to_string(),
-            discovery_url: None,
+            discovery_url: Some(crate::build_defaults::DISCOVERY_URL.to_string()),
             allow_public_relay: false,
             bound_instance_id: None,
         }

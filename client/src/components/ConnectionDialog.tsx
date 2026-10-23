@@ -3,7 +3,7 @@ import { Alert, Button, Checkbox, Descriptions, Form, Input, Modal, Space, Switc
 import { ApiError, native, type ConnectionSettings, type TransportState } from '../lib/api';
 import { Failure } from './Feedback';
 
-export const initialConnection: ConnectionSettings = { serverUrl: 'http://127.0.0.1:8003', discoveryUrl: '', allowPublicRelay: false };
+export const initialConnection: ConnectionSettings = { serverUrl: 'http://127.0.0.1:8003', discoveryUrl: 'https://39.106.128.14', allowPublicRelay: false };
 type NetworkService = { running: boolean; enabled: boolean; autoStart: boolean; deviceId: string; mode: string; ready: boolean };
 export function ConnectionDialog({ open, state, onClose, onChange }: { open: boolean; state?: TransportState; onClose: () => void; onChange: (state: TransportState) => void }) {
   const startupLabel = /Macintosh|Mac OS X/.test(navigator.userAgent) ? '登录时启动' : '开机启动';

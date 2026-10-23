@@ -156,6 +156,9 @@ pub async fn transport_configure(
     request: ConfigureInput,
 ) -> Result<TransportStateView> {
     require_main_window(&window)?;
+    // This must precede the service status/configure calls below so a delayed
+    // startup adoption cannot overwrite the settings being saved here.
+    state.initialize_network_service().await?;
     let previous = state.state_view().await.settings;
     let service_status = network_service::status().await;
     if let Ok(status) = &service_status {
@@ -197,31 +200,41 @@ pub async fn transport_configure(
 }
 
 #[tauri::command]
-pub async fn network_service_get_state(window: WebviewWindow) -> Result<NetworkServiceView> {
+pub async fn network_service_get_state(
+    window: WebviewWindow,
+    state: tauri::State<'_, AppState>,
+) -> Result<NetworkServiceView> {
     require_main_window(&window)?;
-    network_service::status().await.map(Into::into)
+    state.initialize_network_service().await?;
+    let status = network_service::status().await?;
+    state.apply_service_status(&status).await;
+    Ok(status.into())
 }
 
 #[tauri::command]
 pub async fn network_service_set_enabled(
     window: WebviewWindow,
+    state: tauri::State<'_, AppState>,
     request: ServiceEnabledInput,
 ) -> Result<NetworkServiceView> {
     require_main_window(&window)?;
-    network_service::set_enabled(request.enabled)
-        .await
-        .map(Into::into)
+    state.initialize_network_service().await?;
+    let status = network_service::set_enabled(request.enabled).await?;
+    state.apply_service_status(&status).await;
+    Ok(status.into())
 }
 
 #[tauri::command]
 pub async fn network_service_set_autostart(
     window: WebviewWindow,
+    state: tauri::State<'_, AppState>,
     request: ServiceAutoStartInput,
 ) -> Result<NetworkServiceView> {
     require_main_window(&window)?;
-    network_service::set_auto_start(request.auto_start)
-        .await
-        .map(Into::into)
+    state.initialize_network_service().await?;
+    let status = network_service::set_auto_start(request.auto_start).await?;
+    state.apply_service_status(&status).await;
+    Ok(status.into())
 }
 
 #[tauri::command]

@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OnceCell};
 use zeroize::Zeroize;
 
 const EXPECTED_SERVICE: &str = "RightData";
@@ -34,6 +34,7 @@ pub struct AppState {
     client: reqwest::Client,
     storage: Storage,
     settings_explicit: AtomicBool,
+    network_service_initialized: OnceCell<()>,
     inner: Mutex<RuntimeState>,
     probe_lock: Mutex<()>,
     refresh_lock: Mutex<()>,
@@ -116,6 +117,7 @@ impl AppState {
             client,
             storage,
             settings_explicit: AtomicBool::new(settings_were_explicit),
+            network_service_initialized: OnceCell::new(),
             inner: Mutex::new(RuntimeState {
                 settings,
                 connection: ConnectionStatus::default(),
@@ -128,6 +130,15 @@ impl AppState {
     }
 
     pub async fn initialize_network_service(&self) -> Result<()> {
+        // Startup and foreground commands must observe one completed adoption
+        // before they validate sessions or mutate connection settings.
+        self.network_service_initialized
+            .get_or_try_init(|| self.initialize_network_service_inner())
+            .await
+            .map(|_| ())
+    }
+
+    async fn initialize_network_service_inner(&self) -> Result<()> {
         let status = match network_service::status().await {
             Ok(status) => status,
             Err(error) if error.code == "network_service_unavailable" => {
@@ -141,7 +152,7 @@ impl AppState {
         };
         if self.settings_explicit.load(Ordering::Relaxed) {
             let settings = self.inner.lock().await.settings.clone();
-            network_service::configure(&ServiceConfig {
+            let status = network_service::configure(&ServiceConfig {
                 server_url: settings.server_url,
                 discovery_url: settings.discovery_url,
                 bound_instance_id: settings.bound_instance_id,
@@ -149,24 +160,11 @@ impl AppState {
                 enabled: status.enabled,
             })
             .await?;
+            self.apply_service_status(&status).await;
             return self.clear_mismatched_session().await;
         }
 
-        let server_url = validate_server_url(&status.server_url)?.to_string();
-        let discovery_url = status
-            .discovery_url
-            .as_deref()
-            .map(validate_discovery_url)
-            .transpose()?
-            .map(|url| url.to_string());
-        let settings = ConnectionSettings {
-            server_url,
-            discovery_url,
-            allow_public_relay: status.allow_public_relay,
-            bound_instance_id: status.bound_instance_id,
-        };
-        self.inner.lock().await.settings = settings;
-        self.clear_mismatched_session().await
+        self.adopt_service_status(status).await
     }
 
     async fn clear_mismatched_session(&self) -> Result<()> {
@@ -180,42 +178,8 @@ impl AppState {
     }
 
     pub async fn state_view(&self) -> TransportStateView {
-        let service = network_service::status().await;
-        let mut state = self.inner.lock().await;
-        match service {
-            Ok(status) if status.enabled => {
-                state.connection.mode = match status.mode.as_str() {
-                    "direct" => ConnectionMode::Direct,
-                    "peer" => ConnectionMode::Peer,
-                    _ => ConnectionMode::Disconnected,
-                };
-                state.connection.ready = status.ready;
-                state.connection.peer_available = status.peer_id.is_some();
-                state.connection.instance_id = status
-                    .bound_instance_id
-                    .clone()
-                    .or_else(|| state.connection.instance_id.clone());
-                state.connection.last_error = status.last_error;
-            }
-            Ok(_) => {
-                state.connection.mode = ConnectionMode::Disconnected;
-                state.connection.ready = false;
-                state.connection.peer_available = false;
-                state.connection.last_error = None;
-            }
-            Err(error) if !cfg!(debug_assertions) => {
-                state.connection.mode = ConnectionMode::Disconnected;
-                state.connection.ready = false;
-                state.connection.peer_available = false;
-                state.connection.last_error = Some(error.message);
-            }
-            _ => {}
-        }
-        TransportStateView {
-            settings: state.settings.clone(),
-            connection: state.connection.clone(),
-            session: session_view(state.session.as_ref()),
-        }
+        let state = self.inner.lock().await;
+        state_to_view(&state)
     }
 
     pub async fn transport_logs(&self) -> Vec<TransportLogEntry> {
@@ -234,17 +198,9 @@ impl AppState {
         let service = network_service::status().await.ok();
         let transport = {
             let mut state = self.inner.lock().await;
-            if let Some(status) = &service
-                && status.enabled
-            {
-                state.connection.mode = match status.mode.as_str() {
-                    "direct" => ConnectionMode::Direct,
-                    "peer" => ConnectionMode::Peer,
-                    _ => ConnectionMode::Disconnected,
-                };
-                state.connection.ready = status.ready;
-                state.connection.peer_available = status.peer_id.is_some();
-                state.connection.last_error = status.last_error.clone();
+            if let Some(status) = &service {
+                let settings = state.settings.clone();
+                apply_service_status_cached(&settings, &mut state.connection, status);
             }
             match state.connection.mode {
                 ConnectionMode::Direct => "direct",
@@ -276,6 +232,7 @@ impl AppState {
     }
 
     pub async fn configure(&self, input: ConfigureInput) -> Result<TransportStateView> {
+        self.initialize_network_service().await?;
         let server_url = validate_server_url(&input.server_url)?.to_string();
         let discovery_url = input
             .discovery_url
@@ -325,6 +282,7 @@ impl AppState {
     }
 
     pub async fn probe_current(&self) -> Result<ProbeResult> {
+        self.initialize_network_service().await?;
         let _guard = self.probe_lock.lock().await;
         if !self.settings_explicit.load(Ordering::Relaxed) {
             if let Err(error) = self.adopt_service_settings().await
@@ -373,6 +331,26 @@ impl AppState {
 
     async fn adopt_service_settings(&self) -> Result<()> {
         let status = network_service::status().await?;
+        self.adopt_service_status(status).await
+    }
+
+    async fn adopt_service_status(&self, status: ServiceStatus) -> Result<()> {
+        let status = if status
+            .discovery_url
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            network_service::configure(&ServiceConfig {
+                server_url: status.server_url,
+                discovery_url: Some(crate::build_defaults::DISCOVERY_URL.to_string()),
+                bound_instance_id: status.bound_instance_id,
+                allow_public_relay: status.allow_public_relay,
+                enabled: status.enabled,
+            })
+            .await?
+        } else {
+            status
+        };
         let settings = ConnectionSettings {
             server_url: validate_server_url(&status.server_url)?.to_string(),
             discovery_url: status
@@ -382,10 +360,19 @@ impl AppState {
                 .transpose()?
                 .map(|url| url.to_string()),
             allow_public_relay: status.allow_public_relay,
-            bound_instance_id: status.bound_instance_id,
+            bound_instance_id: status.bound_instance_id.clone(),
         };
-        self.inner.lock().await.settings = settings;
+        let mut state = self.inner.lock().await;
+        apply_service_status_cached(&settings, &mut state.connection, &status);
+        state.settings = settings;
+        drop(state);
         self.clear_mismatched_session().await
+    }
+
+    pub async fn apply_service_status(&self, status: &ServiceStatus) {
+        let mut state = self.inner.lock().await;
+        let settings = state.settings.clone();
+        apply_service_status_cached(&settings, &mut state.connection, status);
     }
 
     async fn probe_at(&self, server_url: &str) -> Result<ProbeData> {
@@ -471,6 +458,8 @@ impl AppState {
     }
 
     pub async fn restore(&self) -> Result<AuthResult> {
+        self.initialize_network_service().await?;
+        self.clear_mismatched_session().await?;
         self.ensure_direct().await?;
         let has_session = self.inner.lock().await.session.is_some();
         if !has_session {
@@ -850,6 +839,40 @@ fn service_status(
     }
 }
 
+fn apply_service_status_cached(
+    settings: &ConnectionSettings,
+    connection: &mut ConnectionStatus,
+    status: &ServiceStatus,
+) {
+    // A service status may downgrade the cache immediately. It may only
+    // restore readiness when a prior Tauri probe verified this exact binding.
+    let validated_instance = settings.bound_instance_id.as_deref().is_some_and(|bound| {
+        connection.instance_id.as_deref() == Some(bound)
+            && connection.api_version.as_deref() == Some(SUPPORTED_API_VERSION)
+            && status.bound_instance_id.as_deref() == Some(bound)
+            && status.server_url.trim_end_matches('/') == settings.server_url.trim_end_matches('/')
+    });
+    let mode = match status.mode.as_str() {
+        "direct" => ConnectionMode::Direct,
+        "peer" => ConnectionMode::Peer,
+        _ => ConnectionMode::Disconnected,
+    };
+    let ready = status.running
+        && status.enabled
+        && status.ready
+        && validated_instance
+        && mode != ConnectionMode::Disconnected;
+
+    connection.mode = if ready {
+        mode
+    } else {
+        ConnectionMode::Disconnected
+    };
+    connection.ready = ready;
+    connection.peer_available = ready && status.peer_id.is_some();
+    connection.last_error = status.last_error.clone();
+}
+
 fn build_proxy_client(status: &ServiceStatus) -> Result<reqwest::Client> {
     let proxy_url = status.proxy_url.as_deref().ok_or_else(|| {
         TransportError::new(
@@ -1216,6 +1239,25 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
+    fn service_status_fixture(enabled: bool, ready: bool) -> ServiceStatus {
+        ServiceStatus {
+            running: true,
+            enabled,
+            auto_start: false,
+            device_id: "test-device".into(),
+            server_url: "http://127.0.0.1:8003".into(),
+            discovery_url: None,
+            bound_instance_id: Some("test-instance".into()),
+            allow_public_relay: false,
+            proxy_url: None,
+            proxy_token: None,
+            mode: if ready { "direct" } else { "disconnected" }.into(),
+            ready,
+            peer_id: None,
+            last_error: None,
+        }
+    }
+
     async fn read_request_headers(stream: &mut tokio::net::TcpStream) -> Vec<u8> {
         let mut request = Vec::new();
         let mut buffer = [0u8; 1024];
@@ -1246,6 +1288,60 @@ mod tests {
             build_api_url("http://127.0.0.1:8003", "https://example.test/api", &empty).is_err()
         );
         assert!(build_api_url("http://127.0.0.1:8003", "/api/../private", &empty).is_err());
+    }
+
+    #[test]
+    fn paused_service_downgrades_cached_connection_without_forgetting_verified_instance() {
+        let settings = ConnectionSettings {
+            server_url: "http://127.0.0.1:8003".into(),
+            discovery_url: None,
+            allow_public_relay: false,
+            bound_instance_id: Some("test-instance".into()),
+        };
+        let mut connection = direct_status(
+            &ProbeData {
+                service: EXPECTED_SERVICE.into(),
+                instance_id: "test-instance".into(),
+                api_version: SUPPORTED_API_VERSION.into(),
+                ready: true,
+            },
+            Duration::from_millis(12),
+        );
+
+        apply_service_status_cached(
+            &settings,
+            &mut connection,
+            &service_status_fixture(false, false),
+        );
+
+        assert_eq!(connection.mode, ConnectionMode::Disconnected);
+        assert!(!connection.ready);
+        assert!(!connection.peer_available);
+        assert_eq!(connection.instance_id.as_deref(), Some("test-instance"));
+        assert_eq!(
+            connection.api_version.as_deref(),
+            Some(SUPPORTED_API_VERSION)
+        );
+    }
+
+    #[test]
+    fn service_ready_does_not_promote_connection_before_probe_validation() {
+        let settings = ConnectionSettings {
+            server_url: "http://127.0.0.1:8003".into(),
+            discovery_url: None,
+            allow_public_relay: false,
+            bound_instance_id: Some("test-instance".into()),
+        };
+        let mut connection = ConnectionStatus::default();
+
+        apply_service_status_cached(
+            &settings,
+            &mut connection,
+            &service_status_fixture(true, true),
+        );
+
+        assert_eq!(connection.mode, ConnectionMode::Disconnected);
+        assert!(!connection.ready);
     }
 
     #[tokio::test]

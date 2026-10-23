@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 DynamicUser=yes
 WorkingDirectory=/opt/rightdata/discovery
-ExecStart=/usr/bin/node --jitless /opt/rightdata/discovery/server.mjs
+ExecStart=/usr/bin/node /opt/rightdata/discovery/server.mjs
 Environment=DISCOVERY_HOST=127.0.0.1
 Environment=DISCOVERY_PORT=8090
 Environment=DISCOVERY_TRUST_PROXY=1
@@ -22,7 +22,6 @@ ProtectKernelModules=yes
 ProtectControlGroups=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
-MemoryDenyWriteExecute=yes
 CapabilityBoundingSet=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SystemCallArchitectures=native

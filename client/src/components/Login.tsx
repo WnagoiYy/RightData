@@ -1,16 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Checkbox, Form, Input } from 'antd';
 import { LockOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
 import { native, type User } from '../lib/api';
 import { Failure } from './Feedback';
 import logo from '../assets/logo.svg';
 
-export function Login({ onLogin, onSettings, initialError }: { onLogin: (user: User) => void; onSettings: () => void; initialError?: unknown }) {
+export function Login({ onLogin, onSettings, initialError, beforeLogin }: { onLogin: (user: User) => void; onSettings: () => void; initialError?: unknown; beforeLogin?: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(initialError);
+  useEffect(() => { setError(initialError); }, [initialError]);
   const submit = async (values: { username: string; password: string; remember: boolean }) => {
     setBusy(true); setError(undefined);
-    try { const result = await native<{ user: User }>('auth_login', { request: values }); onLogin(result.user); }
+    try { await beforeLogin?.(); const result = await native<{ user: User }>('auth_login', { request: values }); onLogin(result.user); }
     catch (cause) { setError(cause); }
     finally { setBusy(false); }
   };
