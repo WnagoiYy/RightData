@@ -154,6 +154,13 @@ jobs:
         env:
           RIGHTDATA_UPDATE_SIGNING_KEY: ${{ secrets.RIGHTDATA_UPDATE_SIGNING_KEY }}
         run: node deploy/github/build-release.mjs ${{ matrix.target }}
+      - name: Real Windows installer lifecycle
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $packages = @(Get-ChildItem test/artifacts/release/RightData-*-windows-x64.exe)
+          if ($packages.Count -ne 1) { throw 'Expected exactly one installer' }
+          ./test/client/installer-integration.ps1 -Package $packages[0].FullName
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}

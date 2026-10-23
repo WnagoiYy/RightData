@@ -1,12 +1,35 @@
 name: Verify published release
 on:
   workflow_dispatch:
+    inputs:
+      test_windows_installer:
+        description: Run the real Windows installation lifecycle on an ephemeral runner
+        type: boolean
+        default: false
   workflow_run:
     workflows: ['RightData release']
     types: [completed]
 permissions:
   contents: read
 jobs:
+  windows-install:
+    if: github.event_name == 'workflow_dispatch' && inputs.test_windows_installer
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify signed release before execution
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node deploy/github/verify-release.mjs
+      - name: Install, upgrade, restart, uninstall and reinstall
+        shell: powershell
+        run: |
+          $version = (Get-Content client/package.json -Raw | ConvertFrom-Json).version
+          ./test/client/installer-integration.ps1 -Package "test/artifacts/release-$version/RightData-$version-windows-x64.exe"
   verify:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
